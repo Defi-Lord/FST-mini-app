@@ -2,8 +2,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useApp } from './state'
 import TopBar from './components_TopBar'
-import MenuDrawer from './components/menu-drawer'
-import MenuDrawer from './components_MenuDrawer' // ← separate component
+import MenuDrawer from './components/menu-drawer' // ← single, correct import
 import { fetchFixtures, fetchBootstrap, fetchElementSummary } from './api' // uses your Vercel /api routes
 
 type Props = {
@@ -16,7 +15,7 @@ type Props = {
   onStats?: () => void
   onBack?: () => void
   onTop10?: () => void
-  // Menu destinations
+  // NEW: menu pages
   onHowToPlay?: () => void
   onAboutUs?: () => void
   onContactUs?: () => void
@@ -152,13 +151,12 @@ export default function HomeHub({
   const handleViewTeam   = onViewTeam ?? (() => alert('Open Team'))
   const handleCreateTeam = onCreateTeam ?? handleViewTeam
   const handleTransfers  = onTransfers ?? (() => alert('Transfers coming soon'))
-  const handleFixtures   = onFixtures ?? (() => alert('Fixtures coming soon'))
+  const handleFixtures   = onFixtures ?? (() => alert('Fixtures coming soon')) // ← navigates to Fixtures page
   const handleStats      = onStats ?? (() => alert('Stats coming soon'))
   const handleJoin       = onJoinContest ?? (() => alert('Join contest coming soon'))
   const handleLb         = onLeaderboard ?? (() => alert('Leaderboard coming soon'))
   const handleTop10      = onTop10 ?? (() => alert('Top 10 coming soon'))
 
-  // menu fallbacks
   const goHowToPlay = onHowToPlay ?? (() => alert('How to Play'))
   const goAboutUs   = onAboutUs   ?? (() => alert('About Us'))
   const goContact   = onContactUs ?? (() => alert('Contact Us'))
