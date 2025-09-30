@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useApp } from './state'
 import TopBar from './components_TopBar'
+import MenuDrawer from './components_MenuDrawer' // ← separate component
 import { fetchFixtures, fetchBootstrap, fetchElementSummary } from './api' // uses your Vercel /api routes
 
 type Props = {
@@ -14,7 +15,7 @@ type Props = {
   onStats?: () => void
   onBack?: () => void
   onTop10?: () => void
-  // NEW: menu pages
+  // Menu destinations
   onHowToPlay?: () => void
   onAboutUs?: () => void
   onContactUs?: () => void
@@ -146,7 +147,7 @@ export default function HomeHub({
     return () => { mounted = false }
   }, [])
 
-  // sensible fallbacks
+  // sensible fallbacks so your main.tsx can pass only onViewTeam
   const handleViewTeam   = onViewTeam ?? (() => alert('Open Team'))
   const handleCreateTeam = onCreateTeam ?? handleViewTeam
   const handleTransfers  = onTransfers ?? (() => alert('Transfers coming soon'))
@@ -156,6 +157,7 @@ export default function HomeHub({
   const handleLb         = onLeaderboard ?? (() => alert('Leaderboard coming soon'))
   const handleTop10      = onTop10 ?? (() => alert('Top 10 coming soon'))
 
+  // menu fallbacks
   const goHowToPlay = onHowToPlay ?? (() => alert('How to Play'))
   const goAboutUs   = onAboutUs   ?? (() => alert('About Us'))
   const goContact   = onContactUs ?? (() => alert('Contact Us'))
@@ -215,7 +217,7 @@ export default function HomeHub({
 
   return (
     <div className="screen">
-      {/* tiny styles for hamburger */}
+      {/* tiny styles for the hamburger */}
       <style>{`
         .hamburger-btn {
           position: fixed; top: 12px; left: 12px; z-index: 50;
@@ -228,7 +230,7 @@ export default function HomeHub({
         .hamburger-lines div { height: 2px; background: #fff; margin: 3px 0; opacity: .9; }
       `}</style>
 
-      {/* Hamburger */}
+      {/* Hamburger (top-left) */}
       <button className="hamburger-btn" aria-label="Open menu" onClick={() => setMenuOpen(true)}>
         <div className="hamburger-lines"><div /><div /><div /></div>
       </button>
@@ -393,8 +395,8 @@ export default function HomeHub({
         <button className="tab" onClick={handleViewTeam}><span>Profile</span></button>
       </nav>
 
-      {/* INLINE Drawer (no external import needed) */}
-      <InlineMenuDrawer
+      {/* Drawer overlay */}
+      <MenuDrawer
         open={menuOpen}
         onClose={() => setMenuOpen(false)}
         onHome={() => { onBack?.(); setMenuOpen(false) }}
@@ -403,166 +405,5 @@ export default function HomeHub({
         onAbout={() => { goAboutUs(); setMenuOpen(false) }}
       />
     </div>
-  )
-}
-
-/* ================= Inline Drawer Component ================= */
-function InlineMenuDrawer(props: {
-  open: boolean
-  onClose: () => void
-  onHome: () => void
-  onHowToPlay: () => void
-  onContact: () => void
-  onAbout: () => void
-}) {
-  const { open, onClose, onHome, onHowToPlay, onContact, onAbout } = props
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    if (open) window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [open, onClose])
-
-  useEffect(() => {
-    const prev = document.body.style.overflow
-    if (open) document.body.style.overflow = 'hidden'
-    return () => { document.body.style.overflow = prev }
-  }, [open])
-
-  return (
-    <>
-      <style>{`
-        .mdr-backdrop {
-          position: fixed; inset: 0;
-          background: rgba(0,0,0,0.0);
-          opacity: 0; pointer-events: none;
-          transition: opacity 180ms ease;
-          z-index: 48;
-        }
-        .mdr-backdrop--on {
-          background: radial-gradient(60% 60% at 0% 0%, rgba(99,102,241,0.35), transparent 60%),
-                      radial-gradient(60% 60% at 100% 100%, rgba(236,72,153,0.35), transparent 60%),
-                      rgba(0,0,0,0.5);
-          opacity: 1; pointer-events: auto;
-        }
-        .mdr {
-          position: fixed; top: 0; left: 0; bottom: 0;
-          width: min(86vw, 360px);
-          transform: translateX(-105%);
-          background: linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.04));
-          border-right: 1px solid rgba(255,255,255,0.14);
-          backdrop-filter: blur(10px);
-          box-shadow: 8px 0 28px rgba(0,0,0,0.35);
-          transition: transform 240ms cubic-bezier(.2,.8,.2,1);
-          z-index: 49;
-          display: flex; flex-direction: column;
-        }
-        .mdr--on { transform: translateX(0); }
-        .mdr__header {
-          display: flex; align-items: center; gap: 10px;
-          padding: 14px 14px 6px;
-        }
-        .mdr__close {
-          appearance: none; border: 0; background: transparent; color: #fff;
-          font-size: 18px; line-height: 1; padding: 8px; border-radius: 10px;
-        }
-        .mdr__close:hover { background: rgba(255,255,255,0.08); }
-        .mdr__brand { display: flex; align-items: baseline; gap: 8px; }
-        .mdr__logo {
-          font-weight: 900; font-size: 18px;
-          background: linear-gradient(135deg, #a855f7, #60a5fa);
-          -webkit-background-clip: text; background-clip: text; color: transparent;
-        }
-        .mdr__title { color: rgba(255,255,255,0.86); font-size: 13px; }
-        .mdr__nav { display: grid; padding: 10px; gap: 6px; }
-        .mdr__item {
-          display: flex; align-items: center; gap: 10px;
-          padding: 12px 12px; border-radius: 12px;
-          background: linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03));
-          color: #fff; font-weight: 700; letter-spacing: .2px;
-          border: 1px solid rgba(255,255,255,0.10);
-          transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
-        }
-        .mdr__item:hover {
-          transform: translateY(-1px);
-          border-color: rgba(255,255,255,0.22);
-          box-shadow: 0 8px 24px rgba(99,102,241,0.25);
-        }
-        .mdr__footer {
-          margin-top: auto; padding: 12px; color: rgba(255,255,255,0.7);
-          font-size: 12px;
-        }
-      `}</style>
-
-      {/* Backdrop */}
-      <div
-        className={`mdr-backdrop ${open ? 'mdr-backdrop--on' : ''}`}
-        onClick={onClose}
-        aria-hidden={!open}
-      />
-      {/* Panel */}
-      <aside className={`mdr ${open ? 'mdr--on' : ''}`} role="dialog" aria-modal="true" aria-label="Main menu">
-        <div className="mdr__header">
-          <button className="mdr__close" onClick={onClose} aria-label="Close menu">✕</button>
-          <div className="mdr__brand">
-            <span className="mdr__logo">FST</span>
-            <span className="mdr__title">Fantasy Sport Token</span>
-          </div>
-        </div>
-
-        <nav className="mdr__nav" aria-label="Menu">
-          <button className="mdr__item" onClick={() => { onHome(); onClose() }}>
-            <IconHome /> Home
-          </button>
-          <button className="mdr__item" onClick={() => { onHowToPlay(); onClose() }}>
-            <IconHow /> How to Play
-          </button>
-          <button className="mdr__item" onClick={() => { onContact(); onClose() }}>
-            <IconContact /> Contact Us
-          </button>
-          <button className="mdr__item" onClick={() => { onAbout(); onClose() }}>
-            <IconAbout /> About Us
-          </button>
-        </nav>
-
-        <div className="mdr__footer">
-          <span>© {new Date().getFullYear()} FST</span>
-        </div>
-      </aside>
-    </>
-  )
-}
-
-/* simple inline icons */
-function IconHome() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden>
-      <path d="M3 10.5 12 3l9 7.5V21a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1v-10.5z"
-            fill="currentColor" opacity="0.9" />
-    </svg>
-  )
-}
-function IconHow() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden>
-      <path d="M10.5 7a3.5 3.5 0 1 1 2.8 5.7V14h-2v-2.2A3.5 3.5 0 0 1 10.5 7zm-.5 9h3v3h-3v-3z"
-            fill="currentColor" opacity="0.9" />
-    </svg>
-  )
-}
-function IconContact() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden>
-      <path d="M2 5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v.2l-10 6.5L2 5.2V5zm0 3.3V19a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8.3l-9.4 6.1a2 2 0 0 1-2.2 0L2 8.3z"
-            fill="currentColor" opacity="0.9" />
-    </svg>
-  )
-}
-function IconAbout() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden>
-      <path d="M12 2a10 10 0 1 1 0 20A10 10 0 0 1 12 2zm0 6.5a1.25 1.25 0 1 0 0-2.5 1.25 1.25 0 0 0 0 2.5zM10.8 18h2.4v-7h-2.4v7z"
-            fill="currentColor" opacity="0.9" />
-    </svg>
   )
 }
