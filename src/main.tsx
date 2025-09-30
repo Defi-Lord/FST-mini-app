@@ -13,6 +13,7 @@ import ViewTeam from './pages_ViewTeam'
 import Top10 from './pages_Top10'
 import Fixtures from './pages_Fixtures'
 import Stats from './pages_Stats'
+import './styles/menu-drawer.css'
 
 type Route =
   | 'landing'

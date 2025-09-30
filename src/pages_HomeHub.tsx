@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useApp } from './state'
 import TopBar from './components_TopBar'
+import MenuDrawer from './components_MenuDrawer' // ⬅️ NEW
 import { fetchFixtures, fetchBootstrap, fetchElementSummary } from './api' // uses your Vercel /api routes
 
 type Props = {
@@ -14,6 +15,10 @@ type Props = {
   onStats?: () => void
   onBack?: () => void
   onTop10?: () => void
+  // ⬇️ NEW: destinations from the hamburger menu
+  onHowToPlay?: () => void
+  onAboutUs?: () => void
+  onContactUs?: () => void
 }
 
 type LbEntry = { name: string; points: number }
@@ -115,7 +120,10 @@ export default function HomeHub({
   onFixtures,
   onStats,
   onBack,
-  onTop10
+  onTop10,
+  onHowToPlay,
+  onAboutUs,
+  onContactUs
 }: Props) {
   const { fullName, budget, team } = useApp()
   const picked = team.length
@@ -123,6 +131,9 @@ export default function HomeHub({
 
   const [lb, setLb] = useState<LbEntry[] | null | 'error'>(null)
   const [fixture, setFixture] = useState<NextFixtureView | null | 'error'>(null)
+
+  // ⬇️ NEW: hamburger menu state
+  const [menuOpen, setMenuOpen] = useState(false)
 
   useEffect(() => {
     let mounted = true
@@ -147,6 +158,11 @@ export default function HomeHub({
   const handleJoin       = onJoinContest ?? (() => alert('Join contest coming soon'))
   const handleLb         = onLeaderboard ?? (() => alert('Leaderboard coming soon'))
   const handleTop10      = onTop10 ?? (() => alert('Top 10 coming soon'))
+
+  // ⬇️ NEW: menu route fallbacks
+  const goHowToPlay = onHowToPlay ?? (() => alert('How to Play'))
+  const goAboutUs   = onAboutUs   ?? (() => alert('About Us'))
+  const goContact   = onContactUs ?? (() => alert('Contact Us'))
 
   const primaryAction = picked < 15
     ? { label: `Pick ${15 - picked} more`, onClick: handleCreateTeam }
@@ -203,6 +219,26 @@ export default function HomeHub({
 
   return (
     <div className="screen">
+      {/* ⬇️ Small style block just for the hamburger button */}
+      <style>{`
+        .hamburger-btn {
+          position: fixed; top: 12px; left: 12px; z-index: 50;
+          width: 40px; height: 40px; border-radius: 12px;
+          border: 1px solid rgba(255,255,255,0.16);
+          background: linear-gradient(135deg, rgba(255,255,255,0.10), rgba(255,255,255,0.05));
+          color: #fff; display: grid; place-items: center;
+        }
+        .hamburger-lines { width: 18px; }
+        .hamburger-lines div { height: 2px; background: #fff; margin: 3px 0; opacity: .9; }
+      `}</style>
+
+      {/* ⬇️ Hamburger (top-left, floats over TopBar) */}
+      <button className="hamburger-btn" aria-label="Open menu" onClick={() => setMenuOpen(true)}>
+        <div className="hamburger-lines">
+          <div /><div /><div />
+        </div>
+      </button>
+
       <div className="container" style={{ paddingTop: 8, paddingBottom: 110 }}>
         <TopBar
           title="Home"
@@ -363,6 +399,16 @@ export default function HomeHub({
         <button className="tab" onClick={handleLb}><span>Live</span></button>
         <button className="tab" onClick={handleViewTeam}><span>Profile</span></button>
       </nav>
+
+      {/* ⬇️ NEW: Drawer overlay (glassy menu) */}
+      <MenuDrawer
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        onHome={() => { onBack?.(); setMenuOpen(false) }}
+        onHowToPlay={() => { goHowToPlay(); setMenuOpen(false) }}
+        onContact={() => { goContact(); setMenuOpen(false) }}
+        onAbout={() => { goAboutUs(); setMenuOpen(false) }}
+      />
     </div>
   )
 }
