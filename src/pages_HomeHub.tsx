@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useApp } from './state'
 import TopBar from './components_TopBar'
+import MenuDrawer from './components/menu-drawer'
 import MenuDrawer from './components_MenuDrawer' // ← separate component
 import { fetchFixtures, fetchBootstrap, fetchElementSummary } from './api' // uses your Vercel /api routes
 

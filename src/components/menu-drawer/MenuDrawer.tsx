@@ -1,7 +1,6 @@
-// src/components_MenuDrawer.tsx
 import { useEffect } from 'react'
 
-type Props = {
+export type MenuDrawerProps = {
   open: boolean
   onClose: () => void
   onHome: () => void
@@ -12,12 +11,12 @@ type Props = {
 
 /**
  * Glassy slide-in drawer for the hamburger menu.
- * Be sure to import the CSS once globally:
+ * Make sure you imported the CSS once:
  *   import './styles/menu-drawer.css'
  */
 export default function MenuDrawer({
   open, onClose, onHome, onHowToPlay, onContact, onAbout,
-}: Props) {
+}: MenuDrawerProps) {
   // Close on ESC
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -73,7 +72,7 @@ export default function MenuDrawer({
   )
 }
 
-/* ---------- tiny inline icons (no deps) ---------- */
+/* tiny inline icons (no deps) */
 function IconHome() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden>
@@ -106,3 +105,6 @@ function IconAbout() {
     </svg>
   )
 }
+
+/* Ensure it's a module in any TS config edge-case */
+export {}
