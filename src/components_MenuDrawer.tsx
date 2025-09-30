@@ -12,7 +12,7 @@ type Props = {
 
 /**
  * Glassy slide-in drawer for the hamburger menu.
- * Requires you to import the CSS once globally:
+ * Be sure to import the CSS once globally:
  *   import './styles/menu-drawer.css'
  */
 export default function MenuDrawer({
