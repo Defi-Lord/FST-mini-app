@@ -376,4 +376,21 @@ img, svg, video { max-width: 100%; height: auto; }
 }
 .hamburger-lines { width: 18px; }
 .hamburger-lines div { height: 2px; background: var(--text); margin: 3px 0; opacity: .9; }
+/* Keep hamburger clear of the Telegram header / safe-area */
+.hamburger-btn {
+  top: calc(env(safe-area-inset-top, 0px) + 56px) !important; /* was 12px */
+  z-index: 9999 !important; /* make sure it's above everything */
+}
+
+/* Global hamburger styles (if you removed the inline ones) */
+.hamburger-btn {
+  position: fixed; left: 12px; top: 56px; z-index: 9999;
+  width: 40px; height: 40px; border-radius: 12px;
+  border: 1px solid var(--glass-stroke, rgba(255,255,255,0.16));
+  background: linear-gradient(135deg, rgba(255,255,255,0.10), rgba(255,255,255,0.05));
+  color: var(--text, #fff); display: grid; place-items: center;
+  box-shadow: var(--shadow, 0 8px 24px rgba(0,0,0,0.35));
+}
+.hamburger-lines { width: 18px; }
+.hamburger-lines div { height: 2px; background: currentColor; margin: 3px 0; opacity: .9; }
 
