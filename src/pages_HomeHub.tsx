@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useApp } from './state'
 import TopBar from './components_TopBar'
-import MenuDrawer from './components/menu-drawer' // ← single, correct import
+import MenuDrawer from './components/menu-drawer' // ← separate component
 import { fetchFixtures, fetchBootstrap, fetchElementSummary } from './api' // uses your Vercel /api routes
 
 type Props = {
@@ -15,7 +15,7 @@ type Props = {
   onStats?: () => void
   onBack?: () => void
   onTop10?: () => void
-  // NEW: menu pages
+  // Menu destinations
   onHowToPlay?: () => void
   onAboutUs?: () => void
   onContactUs?: () => void
@@ -151,12 +151,13 @@ export default function HomeHub({
   const handleViewTeam   = onViewTeam ?? (() => alert('Open Team'))
   const handleCreateTeam = onCreateTeam ?? handleViewTeam
   const handleTransfers  = onTransfers ?? (() => alert('Transfers coming soon'))
-  const handleFixtures   = onFixtures ?? (() => alert('Fixtures coming soon')) // ← navigates to Fixtures page
+  const handleFixtures   = onFixtures ?? (() => alert('Fixtures coming soon'))
   const handleStats      = onStats ?? (() => alert('Stats coming soon'))
   const handleJoin       = onJoinContest ?? (() => alert('Join contest coming soon'))
   const handleLb         = onLeaderboard ?? (() => alert('Leaderboard coming soon'))
   const handleTop10      = onTop10 ?? (() => alert('Top 10 coming soon'))
 
+  // menu fallbacks
   const goHowToPlay = onHowToPlay ?? (() => alert('How to Play'))
   const goAboutUs   = onAboutUs   ?? (() => alert('About Us'))
   const goContact   = onContactUs ?? (() => alert('Contact Us'))
@@ -216,28 +217,27 @@ export default function HomeHub({
 
   return (
     <div className="screen">
-      {/* tiny styles for the hamburger */}
+      {/* tiny styles for the hamburger (safe even if you already added global CSS) */}
       <style>{`
         .hamburger-btn {
-          position: fixed; top: 12px; left: 12px; z-index: 50;
-          width: 40px; height: 40px; border-radius: 12px;
-          border: 1px solid rgba(255,255,255,0.16);
+          appearance: none; border: 1px solid rgba(255,255,255,0.16);
           background: linear-gradient(135deg, rgba(255,255,255,0.10), rgba(255,255,255,0.05));
-          color: #fff; display: grid; place-items: center;
+          width: 40px; height: 40px; border-radius: 12px;
+          display: grid; place-items: center; color: #fff;
         }
         .hamburger-lines { width: 18px; }
-        .hamburger-lines div { height: 2px; background: #fff; margin: 3px 0; opacity: .9; }
+        .hamburger-lines div { height: 2px; background: currentColor; margin: 3px 0; opacity: .9; }
       `}</style>
-
-      {/* Hamburger (top-left) */}
-      <button className="hamburger-btn" aria-label="Open menu" onClick={() => setMenuOpen(true)}>
-        <div className="hamburger-lines"><div /><div /><div /></div>
-      </button>
 
       <div className="container" style={{ paddingTop: 8, paddingBottom: 110 }}>
         <TopBar
           title="Home"
           onBack={onBack}
+          leftSlot={(
+            <button className="hamburger-btn" aria-label="Open menu" onClick={() => setMenuOpen(true)}>
+              <div className="hamburger-lines"><div /><div /><div /></div>
+            </button>
+          )}
           rightSlot={
             <div className="balance-chip" style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)'}}>
               £{budget.toFixed(1)}m
