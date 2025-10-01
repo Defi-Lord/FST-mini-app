@@ -13,6 +13,13 @@ import ViewTeam from './pages_ViewTeam'
 import Top10 from './pages_Top10'
 import Fixtures from './pages_Fixtures'
 import Stats from './pages_Stats'
+
+// NEW PAGES (hamburger menu)
+import HowToPlay from './pages_HowToPlay'
+import AboutUs from './pages_AboutUs'
+import ContactUs from './pages_ContactUs'
+
+// keep the drawer styles global
 import './styles/menu-drawer.css'
 
 type Route =
@@ -26,6 +33,10 @@ type Route =
   | 'top10'
   | 'fixtures'
   | 'stats'
+  // NEW routes
+  | 'howToPlay'
+  | 'about'
+  | 'contact'
 
 function App() {
   const [route, setRoute] = useState<Route>('landing')
@@ -123,6 +134,10 @@ function App() {
           onTransfers={() => alert('Transfers coming soon')}
           onFixtures={() => go('fixtures')}
           onStats={() => go('stats')}
+          // NEW: hamburger menu destinations
+          onHowToPlay={() => go('howToPlay')}
+          onAboutUs={() => go('about')}
+          onContactUs={() => go('contact')}
         />
       )}
 
@@ -130,6 +145,11 @@ function App() {
       {route === 'top10' && <Top10 onBack={back} />}
       {route === 'fixtures' && <Fixtures onBack={back} />}
       {route === 'stats' && <Stats onBack={back} />}
+
+      {/* NEW pages rendered by the menu */}
+      {route === 'howToPlay' && <HowToPlay onBack={back} />}
+      {route === 'about' && <AboutUs onBack={back} />}
+      {route === 'contact' && <ContactUs onBack={back} />}
     </>
   )
 }
