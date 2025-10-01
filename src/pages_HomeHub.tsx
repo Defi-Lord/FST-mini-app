@@ -2,8 +2,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useApp } from './state'
 import TopBar from './components_TopBar'
-import MenuDrawer from './components/menu-drawer' // ← separate component
-import { fetchFixtures, fetchBootstrap, fetchElementSummary } from './api' // uses your Vercel /api routes
+import MenuDrawer from './components/menu-drawer'
+import { fetchFixtures, fetchBootstrap, fetchElementSummary } from './api'
 
 type Props = {
   onViewTeam?: () => void
@@ -15,7 +15,6 @@ type Props = {
   onStats?: () => void
   onBack?: () => void
   onTop10?: () => void
-  // Menu destinations
   onHowToPlay?: () => void
   onAboutUs?: () => void
   onContactUs?: () => void
@@ -37,9 +36,7 @@ async function loadLeaderboardPreview(timeoutMs = 7000): Promise<LbEntry[] | nul
 class AbortSignalController {
   private controller = new AbortController()
   private timer: any
-  constructor(ms: number) {
-    this.timer = setTimeout(() => this.controller.abort('timeout'), ms)
-  }
+  constructor(ms: number) { this.timer = setTimeout(() => this.controller.abort('timeout'), ms) }
   get signal() { return this.controller.signal }
   clear() { clearTimeout(this.timer) }
 }
@@ -47,37 +44,24 @@ class AbortSignalController {
 function formatLocal(dtIso: string) {
   try {
     const d = new Date(dtIso)
-    return d.toLocaleString(undefined, {
-      weekday: 'short', month: 'short', day: 'numeric',
-      hour: '2-digit', minute: '2-digit'
-    })
+    return d.toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
   } catch { return dtIso }
 }
 
 type NextFixtureView = { home: string; away: string; kickoff_utc: string }
 
 async function loadNextFixtureFromFPL(): Promise<NextFixtureView | null> {
-  const [fixtures, bootstrap] = await Promise.all([
-    fetchFixtures(),        // /api/fpl/fixtures?future=1
-    fetchBootstrap()        // /api/fpl/bootstrap-static
-  ])
-
+  const [fixtures, bootstrap] = await Promise.all([ fetchFixtures(), fetchBootstrap() ])
   const teamNameById = new Map<number, string>()
-  if (bootstrap?.teams) {
-    for (const t of bootstrap.teams) teamNameById.set(t.id, t.name)
-  }
+  if (bootstrap?.teams) for (const t of bootstrap.teams) teamNameById.set(t.id, t.name)
 
   const upcoming = (fixtures || [])
     .filter((f: any) => !!f.kickoff_time)
-    .sort((a: any, b: any) =>
-      new Date(a.kickoff_time).getTime() - new Date(b.kickoff_time).getTime()
-    )[0]
+    .sort((a: any, b: any) => new Date(a.kickoff_time).getTime() - new Date(b.kickoff_time).getTime())[0]
 
   if (!upcoming) return null
-
   const home = teamNameById.get(upcoming.team_h) || `Team ${upcoming.team_h}`
   const away = teamNameById.get(upcoming.team_a) || `Team ${upcoming.team_a}`
-
   return { home, away, kickoff_utc: upcoming.kickoff_time }
 }
 
@@ -99,9 +83,7 @@ async function sumWeeklyPointsForTeam(playerIds: (string|number)[], round: numbe
     playerIds.map(async (id) => {
       try {
         const s = await fetchElementSummary(id)
-        const row = Array.isArray(s?.history)
-          ? s.history.find((h: any) => Number(h.round) === Number(round))
-          : null
+        const row = Array.isArray(s?.history) ? s.history.find((h: any) => Number(h.round) === Number(round)) : null
         const pts = Number(row?.total_points ?? 0)
         return Number.isFinite(pts) ? pts : 0
       } catch { return 0 }
@@ -112,18 +94,8 @@ async function sumWeeklyPointsForTeam(playerIds: (string|number)[], round: numbe
 /* ===== end helpers ===== */
 
 export default function HomeHub({
-  onViewTeam,
-  onCreateTeam,
-  onJoinContest,
-  onLeaderboard,
-  onTransfers,
-  onFixtures,
-  onStats,
-  onBack,
-  onTop10,
-  onHowToPlay,
-  onAboutUs,
-  onContactUs
+  onViewTeam, onCreateTeam, onJoinContest, onLeaderboard, onTransfers, onFixtures, onStats, onBack, onTop10,
+  onHowToPlay, onAboutUs, onContactUs
 }: Props) {
   const { fullName, budget, team } = useApp()
   const picked = team.length
@@ -147,7 +119,7 @@ export default function HomeHub({
     return () => { mounted = false }
   }, [])
 
-  // sensible fallbacks so your main.tsx can pass only onViewTeam
+  // sensible fallbacks
   const handleViewTeam   = onViewTeam ?? (() => alert('Open Team'))
   const handleCreateTeam = onCreateTeam ?? handleViewTeam
   const handleTransfers  = onTransfers ?? (() => alert('Transfers coming soon'))
@@ -157,7 +129,6 @@ export default function HomeHub({
   const handleLb         = onLeaderboard ?? (() => alert('Leaderboard coming soon'))
   const handleTop10      = onTop10 ?? (() => alert('Top 10 coming soon'))
 
-  // menu fallbacks
   const goHowToPlay = onHowToPlay ?? (() => alert('How to Play'))
   const goAboutUs   = onAboutUs   ?? (() => alert('About Us'))
   const goContact   = onContactUs ?? (() => alert('Contact Us'))
@@ -188,11 +159,8 @@ export default function HomeHub({
         const events: FplEvent[] = data?.events ?? []
         const { round: r, label } = resolveLatestFinishedRound(events)
         if (!mounted) return
-        setRound(r)
-        setRoundLabel(label)
-      } finally {
-        if (mounted) setLoadingGW(false)
-      }
+        setRound(r); setRoundLabel(label)
+      } finally { if (mounted) setLoadingGW(false) }
     })()
     return () => { mounted = false }
   }, [])
@@ -217,27 +185,15 @@ export default function HomeHub({
 
   return (
     <div className="screen">
-      {/* tiny styles for the hamburger (safe even if you already added global CSS) */}
-      <style>{`
-        .hamburger-btn {
-          appearance: none; border: 1px solid rgba(255,255,255,0.16);
-          background: linear-gradient(135deg, rgba(255,255,255,0.10), rgba(255,255,255,0.05));
-          width: 40px; height: 40px; border-radius: 12px;
-          display: grid; place-items: center; color: #fff;
-        }
-        .hamburger-lines { width: 18px; }
-        .hamburger-lines div { height: 2px; background: currentColor; margin: 3px 0; opacity: .9; }
-      `}</style>
-
       <div className="container" style={{ paddingTop: 8, paddingBottom: 110 }}>
         <TopBar
           title="Home"
           onBack={onBack}
-          leftSlot={(
+          leftSlot={
             <button className="hamburger-btn" aria-label="Open menu" onClick={() => setMenuOpen(true)}>
               <div className="hamburger-lines"><div /><div /><div /></div>
             </button>
-          )}
+          }
           rightSlot={
             <div className="balance-chip" style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)'}}>
               £{budget.toFixed(1)}m

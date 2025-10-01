@@ -7,13 +7,12 @@ export default function TopBar({
 }: {
   title?: string
   onBack?: () => void
-  rightSlot?: any       // keep simple to avoid React type import
+  rightSlot?: any
   leftSlot?: any        // ← NEW
 }) {
   return (
     <div className="topbar">
       <div className="topbar-left">
-        {/* If a leftSlot is provided (e.g., hamburger), use it; otherwise show the Back button */}
         {leftSlot ?? (onBack && (
           <button className="btn-back" onClick={onBack} aria-label="Back">‹</button>
         ))}
