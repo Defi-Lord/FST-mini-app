@@ -5,22 +5,22 @@ import {
   BrowserRouter,
   Routes,
   Route,
+  Navigate,
   useNavigate,
   Link,
-  Navigate,
 } from "react-router-dom";
 import SignInWithWallet from "./components/SignInWithWallet";
+import ProfilePage from "./pages_Profile";
+import HistoryPage from "./pages_History";
+import AdminPage from "./pages_Admin";
 
-/** Resolve API base from Vite env (no trailing slash) */
 const API_BASE =
   (import.meta as any)?.env?.VITE_API_BASE?.replace(/\/+$/, "") || "";
 
-/** Simple "is signed in" check (cookie JWT may exist; also support localStorage token) */
-function useAuthState() {
+function useAuth() {
   const [authed, setAuthed] = React.useState<boolean | null>(null);
   React.useEffect(() => {
-    // very light heuristic — if token present we consider authed; cookie is server-side
-    const t = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+    const t = localStorage.getItem("auth_token");
     setAuthed(!!t);
   }, []);
   return authed;
@@ -32,9 +32,13 @@ function Landing() {
     <div style={wrap}>
       <div style={card}>
         <div style={logo}>FST</div>
-        <h1 style={{ margin: "6px 0 6px" }}>Welcome to FST</h1>
-        <p style={{ opacity: 0.85, marginTop: 0 }}>Sign in to continue.</p>
+        <h1 style={{ margin: "6px 0 6px" }}>Sign in with Solana</h1>
+        <p style={{ opacity: 0.8, marginTop: 0 }}>
+          Secure sign in using your Phantom wallet.
+        </p>
+
         <SignInWithWallet onSuccess={() => nav("/home", { replace: true })} />
+
         <div style={{ marginTop: 12, opacity: 0.75, fontSize: 12 }}>
           API: <code>{API_BASE || "(missing VITE_API_BASE)"}</code>
         </div>
@@ -51,7 +55,7 @@ function Home() {
         <div style={logo}>FST</div>
         <h1 style={{ margin: "6px 0 6px" }}>Home</h1>
         <p style={{ opacity: 0.8, margin: "0 0 12px" }}>
-          Quick links:
+          Where to?
         </p>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
           <Link to="/profile" style={btnMuted}>Profile</Link>
@@ -64,10 +68,9 @@ function Home() {
   );
 }
 
-/** Guarded route: if not "authed", show sign-in */
 function RequireAuth({ children }: { children: React.ReactNode }) {
-  const authed = useAuthState();
-  if (authed === null) return null; // initial read; very brief
+  const authed = useAuth();
+  if (authed === null) return null;
   return authed ? <>{children}</> : <Navigate to="/" replace />;
 }
 
@@ -112,7 +115,7 @@ const App = () => (
   </BrowserRouter>
 );
 
-/** ====== inline styles shared with other pages for cohesive look ====== */
+/** styles */
 const wrap: React.CSSProperties = {
   minHeight: "100dvh",
   display: "grid",
@@ -165,11 +168,6 @@ const btnMuted: React.CSSProperties = {
   textDecoration: "none",
   fontWeight: 700,
 };
-
-/** ====== lightweight pages (imported below to keep single-file) ====== */
-import ProfilePage from "./pages_Profile";
-import HistoryPage from "./pages_History";
-import AdminPage from "./pages_Admin";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

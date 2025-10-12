@@ -1,15 +1,24 @@
 // src/components/SignInWithWallet.tsx
 import React from "react";
 
-/** Resolve API base from Vite env */
+/** Resolve API base from Vite env (no trailing slash) */
 const API_BASE =
   (import.meta as any)?.env?.VITE_API_BASE?.replace(/\/+$/, "") || "";
 
-/** Helpers */
-const toBytes = (s: string) => new TextEncoder().encode(s);
+type Phantom = {
+  isPhantom?: boolean;
+  publicKey?: { toBase58?: () => string; toString?: () => string };
+  connect: (opts?: any) => Promise<{ publicKey: { toBase58?: () => string; toString?: () => string } }>;
+  disconnect?: () => Promise<void>;
+  signMessage?: (msg: Uint8Array, enc?: string) => Promise<{ signature: Uint8Array }>;
+};
+
+function toBytes(s: string) {
+  return new TextEncoder().encode(s);
+}
+
 function base58Encode(bytes: Uint8Array): string {
-  const A =
-    "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+  const A = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
   if (!bytes.length) return "";
   let zeros = 0;
   while (zeros < bytes.length && bytes[zeros] === 0) zeros++;
@@ -31,26 +40,14 @@ function base58Encode(bytes: Uint8Array): string {
   return digits.reverse().map((d) => A[d]).join("");
 }
 
-/** Phantom provider (subset) */
-type Phantom = {
-  isPhantom?: boolean;
-  publicKey?: { toBase58?: () => string; toString?: () => string };
-  connect: (opts?: any) => Promise<{ publicKey: any }>;
-  disconnect?: () => Promise<void>;
-  signMessage?: (
-    message: Uint8Array,
-    display?: string
-  ) => Promise<{ signature: Uint8Array }>;
-};
-
-function detectPhantom(): Phantom | undefined {
+const detectPhantom = (): Phantom | undefined => {
   const w = window as any;
   return w?.solana?.isPhantom
     ? (w.solana as Phantom)
     : w?.phantom?.solana?.isPhantom
     ? (w.phantom.solana as Phantom)
     : undefined;
-}
+};
 
 type Status =
   | { kind: "idle" }
@@ -58,130 +55,103 @@ type Status =
   | { kind: "gettingNonce" }
   | { kind: "signing" }
   | { kind: "verifying" }
-  | { kind: "error"; message: string; hint?: string }
-  | { kind: "ok"; address: string };
+  | { kind: "success"; userId?: string; token?: string }
+  | { kind: "error"; message: string; hint?: string };
 
 export default function SignInWithWallet({
   onSuccess,
 }: {
   onSuccess?: () => void;
 }) {
-  const [addr, setAddr] = React.useState("");
+  const [address, setAddress] = React.useState("");
   const [status, setStatus] = React.useState<Status>({ kind: "idle" });
 
-  const connect = React.useCallback(async (): Promise<string> => {
-    const phantom = detectPhantom();
-    if (!phantom) {
-      throw Object.assign(new Error("Phantom wallet not detected."), {
-        hint: "Install Phantom and refresh the page.",
-      });
-    }
+  const connect = React.useCallback(async () => {
+    const p = detectPhantom();
+    if (!p?.connect) throw new Error("Phantom wallet not found.");
     setStatus({ kind: "connecting" });
-    const res = await phantom.connect({ onlyIfTrusted: false });
-    const pk: any = res?.publicKey;
-    const base58 =
-      pk?.toBase58?.() ??
-      pk?.toString?.() ??
-      (() => {
-        throw new Error("Could not read wallet address.");
-      })();
-    setAddr(base58);
-    return base58;
+    const res = await p.connect({ onlyIfTrusted: false });
+    const pkAny: any = res?.publicKey;
+    const addr =
+      pkAny?.toBase58?.() ?? pkAny?.toString?.() ?? String(pkAny ?? "");
+    if (!addr) throw new Error("Could not read wallet address.");
+    setAddress(addr);
+    return addr;
   }, []);
 
   const signIn = React.useCallback(async () => {
     try {
       if (!API_BASE) {
-        throw Object.assign(
-          new Error(
-            "Missing VITE_API_BASE. Set it in Vercel env and redeploy."
-          ),
-          { hint: "VITE_API_BASE=https://fst-api.onrender.com" }
+        throw new Error(
+          "Missing VITE_API_BASE. Set it in Vercel Project → Environment Variables."
         );
       }
-      const wallet = addr || (await connect());
+      const p = detectPhantom();
+      if (!p) throw new Error("Phantom wallet not found.");
 
-      // 1) Get nonce message (cookie-based on server)
+      const wallet = address || (await connect());
+
+      // 1) Get nonce + message (sets nonce cookie; also returns message)
       setStatus({ kind: "gettingNonce" });
-      const nRes = await fetch(
+      const nonceRes = await fetch(
         `${API_BASE}/auth/nonce?wallet=${encodeURIComponent(wallet)}`,
         { method: "GET", credentials: "include" }
       );
-      if (!nRes.ok) {
-        const txt = await nRes.text();
-        throw Object.assign(
-          new Error(`Nonce failed (${nRes.status})`),
-          { hint: txt || "Check CORS_ORIGIN and cookies on the API." }
-        );
+      const nonceTxt = await nonceRes.text();
+      if (!nonceRes.ok) {
+        throw new Error(nonceTxt || `Nonce failed (HTTP ${nonceRes.status})`);
       }
-      const { message } = (await nRes.json()) as { message: string };
-      if (!message) {
-        throw new Error("Nonce response missing 'message'.");
-      }
+      const { message } = JSON.parse(nonceTxt) as { message: string };
+      if (!message) throw new Error("Nonce response missing message.");
 
-      // 2) Sign the exact message
-      const phantom = detectPhantom();
-      if (!phantom?.signMessage) {
-        throw Object.assign(
-          new Error("Phantom signMessage unavailable."),
-          {
-            hint:
-              "Enable Message Signing: Phantom → Settings → Developer → Message Signing.",
-          }
+      // 2) Sign message
+      if (!p.signMessage) {
+        throw new Error(
+          "Phantom cannot sign messages. Enable Message Signing in Phantom → Settings → Developer."
         );
       }
       setStatus({ kind: "signing" });
-      const { signature } = await phantom.signMessage(toBytes(message), "utf8");
-      const signatureBase58 = base58Encode(signature);
+      const { signature } = await p.signMessage(toBytes(message), "utf8");
+      const sig58 = base58Encode(signature);
 
-      // 3) Verify
+      // 3) Verify (server reads nonce from cookie; body includes sig + wallet)
       setStatus({ kind: "verifying" });
-      const vRes = await fetch(`${API_BASE}/auth/verify`, {
+      const verifyRes = await fetch(`${API_BASE}/auth/verify`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           walletAddress: wallet,
-          signatureBase58,
-          // (Optional) if your API supports it, pass the message back:
-          // message,
+          signatureBase58: sig58,
         }),
       });
-      const vText = await vRes.text();
-      if (!vRes.ok) {
-        throw Object.assign(
-          new Error(`Verify failed (${vRes.status})`),
-          {
-            hint:
-              vText ||
-              "If it says 'Missing nonce cookie', allow your Vercel domain in CORS_ORIGIN and set cookies with SameSite=None; Secure.",
-          }
-        );
-      }
-      // If API returns a token, store it for programmatic calls:
-      try {
-        const data = JSON.parse(vText) as { token?: string };
-        if (data?.token) localStorage.setItem("auth_token", data.token);
-      } catch {
-        /* ignore */
+      const verifyTxt = await verifyRes.text();
+      if (!verifyRes.ok) throw new Error(verifyTxt || `HTTP ${verifyRes.status}`);
+      const data = JSON.parse(verifyTxt) as {
+        ok: boolean;
+        token?: string;
+        userId?: string;
+      };
+
+      if (data.token) {
+        try {
+          localStorage.setItem("auth_token", data.token);
+        } catch {}
       }
 
-      setStatus({ kind: "ok", address: wallet });
-      // navigate the app after a short tick
-      setTimeout(() => {
-        onSuccess?.();
-        try {
-          window.location.assign("/home");
-        } catch {}
-      }, 250);
+      setStatus({ kind: "success", userId: data.userId, token: data.token });
+      onSuccess?.();
     } catch (e: any) {
-      setStatus({
-        kind: "error",
-        message: e?.message || String(e),
-        hint: e?.hint,
-      });
+      const msg = e?.message || String(e);
+      const hint =
+        /nonce/i.test(msg)
+          ? "If this is a preview domain, add https://*.vercel.app to CORS_ORIGIN on Render and ensure cookies use SameSite=None; Secure."
+          : /Failed to fetch|CORS/i.test(msg)
+          ? "Check CORS_ORIGIN on Render to include your exact Vercel domain. Clear Render cache and redeploy."
+          : undefined;
+      setStatus({ kind: "error", message: msg, hint });
     }
-  }, [addr, connect]);
+  }, [address, connect, onSuccess]);
 
   const busy =
     status.kind === "connecting" ||
@@ -190,27 +160,37 @@ export default function SignInWithWallet({
     status.kind === "verifying";
 
   return (
-    <div className="signin-wrap">
-      <style>{css}</style>
-      <div className="card">
-        <div className="logo">FST</div>
-        <h1>Sign in with Solana</h1>
-        <p className="sub">Secure sign in using your Phantom wallet.</p>
-
-        <div className="pill">
-          <div className="label">Wallet</div>
-          <div className="value">
-            {addr ? addr : "Not connected"}
-          </div>
+    <div style={box}>
+      <div style={row}>
+        <div style={{ opacity: 0.85, fontSize: 12, marginBottom: 6 }}>
+          Wallet
         </div>
+        <div style={pill}>
+          {address ? address : "No wallet connected"}
+        </div>
+      </div>
 
-        <div className="row">
-          {!addr ? (
-            <button className="btn muted" onClick={connect} disabled={busy}>
-              {status.kind === "connecting" ? "Connecting…" : "Connect Phantom"}
+      <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+        {!address ? (
+          <button style={btnPrimary} disabled={busy} onClick={connect}>
+            {status.kind === "connecting" ? "Connecting…" : "Connect Phantom"}
+          </button>
+        ) : (
+          <>
+            <button
+              style={btnMuted}
+              disabled={busy}
+              onClick={async () => {
+                try {
+                  await detectPhantom()?.disconnect?.();
+                } catch {}
+                setAddress("");
+                setStatus({ kind: "idle" });
+              }}
+            >
+              Disconnect
             </button>
-          ) : (
-            <button className="btn primary" onClick={signIn} disabled={busy}>
+            <button style={btnPrimary} disabled={busy} onClick={signIn}>
               {status.kind === "gettingNonce"
                 ? "Getting nonce…"
                 : status.kind === "signing"
@@ -219,50 +199,73 @@ export default function SignInWithWallet({
                 ? "Verifying…"
                 : "Sign In"}
             </button>
-          )}
-        </div>
-
-        {status.kind === "error" && (
-          <div className="alert">
-            <div><strong>Auth error:</strong> {status.message}</div>
-            {status.hint && <div className="hint">{status.hint}</div>}
-          </div>
+          </>
         )}
-
-        <div className="note">
-          Tip: If you don’t see the wallet popup, click the Phantom icon in your browser toolbar.
-        </div>
       </div>
 
-      <div className="bg" />
+      {status.kind === "error" && (
+        <div style={errBox}>
+          <div>
+            <strong>Auth error:</strong> {status.message}
+          </div>
+          {status.hint && <div style={{ marginTop: 6 }}>{status.hint}</div>}
+        </div>
+      )}
+      {busy && (
+        <div style={ghost}>
+          Working… ({status.kind})
+        </div>
+      )}
     </div>
   );
 }
 
-const css = String.raw`
-.signin-wrap { min-height:100dvh; display:grid; place-items:center; position:relative; overflow:hidden; background:#0b1020; }
-.bg { position:absolute; inset:-20%; background:
-  radial-gradient(60% 40% at 20% 10%, rgba(124,58,237,.25), transparent 60%),
-  radial-gradient(50% 40% at 80% 20%, rgba(236,72,153,.25), transparent 60%),
-  radial-gradient(40% 30% at 40% 80%, rgba(16,185,129,.25), transparent 60%);
-  filter: blur(80px);
-}
-.card { position:relative; z-index:1; width:min(92vw, 520px); color:#e7e9ee;
-  background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.14);
-  border-radius:16px; padding:28px; box-shadow:0 10px 50px rgba(0,0,0,.35); text-align:center; backdrop-filter: blur(8px);
-}
-.logo { width:56px; height:56px; border-radius:14px; margin:0 auto 12px; display:grid; place-items:center;
-  background: linear-gradient(135deg, #7c3aed, #ec4899); color:#fff; font-weight:900; letter-spacing:.5px; }
-h1 { margin:6px 0 4px; font-size:22px; font-weight:900; }
-.sub { margin:0 0 16px; opacity:.8; }
-.pill { margin:8px 0 16px; border:1px dashed rgba(231,233,238,.25); border-radius:12px; padding:10px 12px; text-align:left; }
-.pill .label { font-size:12px; opacity:.75; }
-.pill .value { word-break: break-all; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12px; }
-.row { display:flex; gap:12px; justify-content:center; margin-top:8px; }
-.btn { appearance:none; border:none; padding:12px 14px; border-radius:12px; cursor:pointer; font-weight:800; }
-.btn.primary { border:1px solid #6b46c1; background:linear-gradient(180deg,#7c3aed,#5b21b6); color:#fff; box-shadow:0 6px 20px rgba(124,58,237,.35); }
-.btn.muted { border:1px solid rgba(255,255,255,.25); background:transparent; color:#e7e9ee; }
-.alert { border:1px solid rgba(255,0,0,.35); background:rgba(255,0,0,.08); color:#ffd5d5; border-radius:10px; padding:10px; margin:12px 0 0; text-align:left; }
-.alert .hint { opacity:.9; margin-top:6px; font-size:12px; }
-.note { margin-top:10px; opacity:.8; font-size:12px; }
-`;
+/** styles */
+const box: React.CSSProperties = {
+  marginTop: 8,
+  textAlign: "left",
+};
+const row: React.CSSProperties = {};
+const pill: React.CSSProperties = {
+  padding: "8px 10px",
+  borderRadius: 10,
+  border: "1px solid rgba(255,255,255,.22)",
+  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+  fontSize: 12,
+  color: "#e7e9ee",
+  background: "rgba(255,255,255,.06)",
+  wordBreak: "break-all",
+};
+const btnPrimary: React.CSSProperties = {
+  padding: "10px 14px",
+  borderRadius: 10,
+  border: "1px solid #6b46c1",
+  background: "linear-gradient(180deg,#7c3aed,#5b21b6)",
+  color: "#fff",
+  cursor: "pointer",
+  fontWeight: 600,
+  boxShadow: "0 6px 20px rgba(124,58,237,.35)",
+};
+const btnMuted: React.CSSProperties = {
+  padding: "10px 14px",
+  borderRadius: 10,
+  border: "1px solid rgba(255,255,255,.25)",
+  background: "transparent",
+  color: "#e7e9ee",
+  cursor: "pointer",
+};
+const errBox: React.CSSProperties = {
+  background: "rgba(255,0,0,0.08)",
+  border: "1px solid rgba(255,0,0,0.3)",
+  color: "#ffd5d5",
+  padding: 10,
+  borderRadius: 10,
+  marginTop: 12,
+};
+const ghost: React.CSSProperties = {
+  marginTop: 12,
+  padding: "10px 12px",
+  borderRadius: 12,
+  border: "1px dashed rgba(255,255,255,.2)",
+  opacity: 0.8,
+};
