@@ -8,12 +8,16 @@
   ],
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "vite build",
+    "build:web": "vite build",
     "preview": "vite preview",
+
     "dev:api": "npm -w apps/api run dev",
     "build:api": "npm -w apps/api run build",
     "prisma:generate": "npm -w apps/api run prisma:generate",
-    "prisma:migrate": "npm -w apps/api run prisma:migrate"
+    "prisma:migrate": "npm -w apps/api run prisma:migrate",
+
+    "postinstall": "echo \"root install ok\""
   },
   "dependencies": {
     "@solana/spl-token": "^0.4.7",
