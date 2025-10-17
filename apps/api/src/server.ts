@@ -4,14 +4,13 @@ import { PrismaClient } from '@prisma/client';
 const app = express();
 const prisma = new PrismaClient();
 
-const PORT = parseInt(process.env.PORT || '3000', 10); // Render uses this!
+// Render requires binding to 0.0.0.0 and using process.env.PORT
+const PORT = parseInt(process.env.PORT || '3000', 10);
 
-// Optional test route
-app.get('/', (req, res) => {
-  res.send('✅ API running on Render successfully!');
+app.get('/', (_req, res) => {
+  res.send('✅ FST API is up and running!');
 });
 
-// Always bind to 0.0.0.0 for Render
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`✅ Server started at http://0.0.0.0:${PORT}`);
+  console.log(`🚀 Server running at http://0.0.0.0:${PORT}`);
 });
