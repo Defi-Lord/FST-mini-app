@@ -1,191 +1,166 @@
-// apps/api/src/routes/auth.ts
-import { Router } from 'express';
-import crypto from 'crypto';
-import jwt from 'jsonwebtoken';
+import express from "express";
+import jwt from "jsonwebtoken";
+import cookieParser from "cookie-parser";
+import nacl from "tweetnacl";
+import bs58 from "bs58";
+import { z } from "zod";
+import { logEvent, ensureWallet } from "../utils/audit";
 
-import { prisma } from '../utils/prisma';
-import { issueJWT } from '../middleware/auth';
-import {
-  verifySolanaSignatureBase58,
-  verifySolanaSignatureBase64,
-} from '../utils/solana';
+const router = express.Router();
 
-const r = Router();
+const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-me";
+const NONCE_TTL_SEC = 300;
 
-/** Admin check from env */
-function isAdmin(address: string) {
-  const raw = process.env.ADMIN_ADDRESSES || '';
-  const set = new Set(raw.split(',').map(s => s.trim()).filter(Boolean));
-  return set.has(address);
-}
+// In-memory map for issued nonces -> message text (optional convenience).
+// We also put the nonce inside a signed cookie; this map is just a helper.
+const issued: Map<string, string> = new Map();
 
-/** Create + store a 5-minute nonce for an address */
-async function createAndStoreNonce(address: string) {
-  // You can collapse to single-line if you prefer shorter messages in the wallet
-  // const nonce = `FST login | addr=${address} | n=${crypto.randomBytes(16).toString('hex')} | ts=${Date.now()}`;
-  const nonce = [
-    'Sign in to FST',
-    `Address: ${address}`,
-    `Nonce: ${crypto.randomBytes(16).toString('hex')}`,
-    `TS:${Date.now()}`,
-  ].join('\n');
+router.use(cookieParser());
 
-  // Upsert user (align to your schema — here User.id = wallet address)
-  await prisma.user.upsert({
-    where: { id: address },
-    update: { updatedAt: new Date() },
-    create: { id: address, createdAt: new Date(), updatedAt: new Date() },
-  });
+const NonceQuery = z.object({
+  wallet: z.string().min(20)
+});
 
-  // Store a short-lived nonce in Session (id = `nonce:<address>`)
-  await prisma.session.upsert({
-    where: { id: `nonce:${address}` },
-    update: { jwtId: nonce, expiresAt: new Date(Date.now() + 5 * 60_000) },
-    create: {
-      id: `nonce:${address}`,
-      userId: address,
-      jwtId: nonce,
-      expiresAt: new Date(Date.now() + 5 * 60_000),
-      createdAt: new Date(),
-    },
-  });
-
-  return nonce;
-}
-
-/** GET /auth/nonce?address=<base58> -> { nonce } */
-r.get('/nonce', async (req, res) => {
+router.get("/nonce", async (req, res) => {
   try {
-    const address = String(req.query.address || '').trim();
-    if (!address) return res.status(400).json({ error: 'address is required' });
-    const nonce = await createAndStoreNonce(address);
-    res.json({ nonce });
-  } catch (e) {
-    console.error('[nonce:get] failed', e);
-    res.status(500).json({ error: 'nonce failed' });
+    const { wallet } = NonceQuery.parse(req.query);
+
+    const nonce = crypto.randomUUID();
+    const message =
+      `FST login\n\nWallet: ${wallet}\nNonce: ${nonce}\nIssued At: ${new Date().toISOString()}\n\nBy signing, you prove ownership of this wallet.`;
+
+    // cookie (HttpOnly) with signed payload
+    const payload = {
+      t: "nonce",
+      wallet,
+      nonce,
+      msg: message,
+      iat: Math.floor(Date.now() / 1000),
+      exp: Math.floor(Date.now() / 1000) + NONCE_TTL_SEC,
+      jti: crypto.randomUUID()
+    };
+    const cookieJwt = jwt.sign(payload, JWT_SECRET);
+    res.cookie("nonce", cookieJwt, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "lax",
+      maxAge: NONCE_TTL_SEC * 1000
+    });
+
+    issued.set(nonce, message);
+
+    await logEvent({
+      action: "wallet_connect_nonce_requested",
+      walletAddress: wallet,
+      subject: nonce,
+      metadata: { message },
+      req
+    });
+
+    return res.json({
+      wallet,
+      nonce,
+      message,
+      expiresInSec: NONCE_TTL_SEC
+    });
+  } catch (e: any) {
+    return res.status(400).json({ error: e?.message || "bad request" });
   }
 });
 
-/** POST /auth/nonce { walletAddress } -> { nonce } */
-r.post('/nonce', async (req, res) => {
-  try {
-    const address = String(req.body?.walletAddress || '').trim();
-    if (!address) return res.status(400).json({ error: 'walletAddress is required' });
-    const nonce = await createAndStoreNonce(address);
-    res.json({ nonce });
-  } catch (e) {
-    console.error('[nonce:post] failed', e);
-    res.status(500).json({ error: 'nonce failed' });
-  }
+const VerifyBody = z.object({
+  walletAddress: z.string().min(20),
+  signatureBase58: z.string().min(10)
 });
 
-/** Helper for clean console logging (don’t mutate values) */
-function showLen(s?: string) {
-  return typeof s === 'string' ? s.length : s;
-}
-
-/** POST /auth/verify
- * body: {
- *   address: string,
- *   nonce: string,
- *   signatureBase64?: string,  // preferred
- *   signature58?: string       // optional alternative
- * }
- * -> { token, role }
- */
-r.post('/verify', async (req, res) => {
+router.post("/verify", express.json(), async (req, res) => {
   try {
-    const { address, nonce, signatureBase64, signature58 } = req.body || {};
-    const hasAll = !!address && !!nonce && (!!signatureBase64 || !!signature58);
+    const { walletAddress, signatureBase58 } = VerifyBody.parse(req.body);
 
-    if (!hasAll) {
-      console.warn('[verify] missing fields', {
-        hasAddress: !!address,
-        hasNonce: !!nonce,
-        hasSigB64: !!signatureBase64,
-        hasSig58: !!signature58,
-      });
-      return res.status(400).json({ error: 'address, nonce and signature are required' });
+    const nonceCookie = req.cookies?.nonce;
+    if (!nonceCookie) {
+      return res.status(401).json({ error: "missing nonce cookie" });
     }
 
-    const addr = String(address);
-    const n = String(nonce);
-
-    const stored = await prisma.session.findUnique({ where: { id: `nonce:${addr}` } });
-
-    if (!stored) {
-      console.warn('[verify] no stored session', { address: addr });
-      return res.status(400).json({ error: 'nonce invalid or expired' });
-    }
-    if (stored.jwtId !== n) {
-      console.warn('[verify] nonce mismatch', {
-        address: addr,
-        storedLen: showLen(stored.jwtId),
-        gotLen: showLen(n),
-      });
-      return res.status(400).json({ error: 'nonce invalid or expired' });
-    }
-    if (stored.expiresAt < new Date()) {
-      console.warn('[verify] nonce expired', {
-        address: addr,
-        expiresAt: stored.expiresAt.toISOString(),
-      });
-      return res.status(400).json({ error: 'nonce invalid or expired' });
-    }
-
-    let ok = false;
+    let decoded: any;
     try {
-      if (signatureBase64) {
-        ok ||= verifySolanaSignatureBase64(addr, n, String(signatureBase64));
-      }
-      if (!ok && signature58) {
-        ok ||= verifySolanaSignatureBase58(addr, n, String(signature58));
-      }
-    } catch (e) {
-      console.error('[verify] signature verify error', e);
+      decoded = jwt.verify(nonceCookie, JWT_SECRET);
+    } catch {
+      return res.status(401).json({ error: "invalid_or_expired_nonce" });
     }
 
+    if (decoded?.t !== "nonce" || decoded?.wallet !== walletAddress) {
+      return res.status(400).json({ error: "nonce_wallet_mismatch" });
+    }
+
+    const expectedMessage: string =
+      issued.get(decoded.nonce) || decoded.msg || "";
+    if (!expectedMessage) {
+      return res.status(400).json({ error: "nonce_message_missing" });
+    }
+
+    // Verify the signature
+    const msgBytes = new TextEncoder().encode(expectedMessage);
+    const sig = bs58.decode(signatureBase58);
+
+    // Solana/Ed25519 verifying
+    const pubkeyBytes = bs58.decode(walletAddress);
+    const ok = nacl.sign.detached.verify(msgBytes, sig, pubkeyBytes);
     if (!ok) {
-      console.warn('[verify] invalid signature', { address: addr });
-      return res.status(400).json({ error: 'invalid signature' });
+      return res.status(401).json({ error: "invalid_signature" });
     }
 
-    // Invalidate nonce (one-time use)
-    await prisma.session.delete({ where: { id: `nonce:${addr}` } }).catch(() => {});
+    // Ensure wallet exists in DB
+    const wallet = await ensureWallet(walletAddress);
 
-    const role = isAdmin(addr) ? 'ADMIN' : undefined;
-    const token = issueJWT({ uid: addr, address: addr, role });
+    // Issue access token
+    const access = jwt.sign(
+      {
+        sub: wallet?.id || walletAddress,
+        wallet: walletAddress,
+        typ: "access"
+      },
+      JWT_SECRET,
+      { expiresIn: "7d" }
+    );
 
-    console.log('[verify] ok', { address: addr, role: role ?? 'USER' });
-    res.json({ token, role: role ?? 'USER' });
+    await logEvent({
+      action: "wallet_verified",
+      walletAddress,
+      subject: wallet?.id,
+      metadata: { tokenIssued: true },
+      req
+    });
+
+    return res.json({ token: access, walletId: wallet?.id, wallet: walletAddress });
   } catch (e: any) {
-    console.error('[verify] failed', e?.message || e);
-    res.status(500).json({ error: 'verify failed' });
+    return res.status(400).json({ error: e?.message || "verify_failed" });
   }
 });
 
-/** POST /auth/introspect { token } -> { ok, payload } (for local debugging) */
-r.post('/introspect', (req, res) => {
+// A minimal /me that works without a users table
+router.get("/me", async (req, res) => {
   try {
-    const { token } = req.body || {};
-    if (!token) return res.status(400).json({ error: 'token required' });
-    const payload = jwt.verify(token, process.env.JWT_SECRET!);
-    res.json({ ok: true, payload });
+    const auth = req.headers.authorization || "";
+    const token = auth.startsWith("Bearer ") ? auth.substring(7) : "";
+    if (!token) return res.status(401).json({ error: "missing_token" });
+
+    let decoded: any;
+    try {
+      decoded = jwt.verify(token, JWT_SECRET);
+    } catch {
+      return res.status(401).json({ error: "invalid_token" });
+    }
+
+    // Return wallet-centric identity
+    return res.json({
+      wallet: decoded.wallet,
+      walletId: decoded.sub,
+      tokenExp: decoded.exp
+    });
   } catch (e: any) {
-    res.status(401).json({ ok: false, error: e?.message || 'invalid token' });
+    return res.status(500).json({ error: "me_failed" });
   }
 });
 
-/** GET /auth/debug/nonce/:address  (DEV ONLY – remove in prod) */
-r.get('/debug/nonce/:address', async (req, res) => {
-  const address = String(req.params.address);
-  const s = await prisma.session.findUnique({ where: { id: `nonce:${address}` } });
-  res.json({
-    exists: !!s,
-    expiresAt: s?.expiresAt ?? null,
-    jwtIdLen: showLen(s?.jwtId as any),
-    startsWith: typeof s?.jwtId === 'string' ? s?.jwtId.slice(0, 40) : null,
-  });
-});
-
-export default r;
+export default router;

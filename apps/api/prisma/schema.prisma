@@ -1,39 +1,41 @@
-/// Prisma schema additions: activity & related models
-
 model Wallet {
   id        String   @id @default(uuid())
   address   String   @unique
   createdAt DateTime @default(now())
-  // optional relation to users if you have a User model with wallet
-  userId    String? 
+  userId    String?
   user      User?    @relation(fields: [userId], references: [id])
   events    Activity[]
+  ContestParticipation ContestParticipation[]
 }
 
 model Activity {
-  id           String    @id @default(uuid())
-  walletId     String?
-  wallet       Wallet?   @relation(fields: [walletId], references: [id])
-  userId       String?   // if you store user entity
-  user         User?     @relation(fields: [userId], references: [id])
-  action       String    // e.g. "wallet_connect", "contest_join", "pay_fee", "verify", "sign_in"
-  subject      String?   // e.g. contest id, tx id
-  metadata     Json?     // free form JSON with extra details
-  ip           String?   // originating IP
-  userAgent    String?   // client UA
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id        String    @id @default(uuid())
+  walletId  String?
+  wallet    Wallet?   @relation(fields: [walletId], references: [id])
+  userId    String?
+  user      User?     @relation(fields: [userId], references: [id])
+  action    String
+  subject   String?
+  metadata  Json?
+  ip        String?
+  userAgent String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([action, createdAt])
+  @@index([walletId, createdAt])
+  @@index([userId, createdAt])
 }
 
 model ContestParticipation {
-  id           String   @id @default(uuid())
-  walletId     String
-  wallet       Wallet   @relation(fields: [walletId], references: [id])
-  contestId    String
-  tokenFee     Decimal?  @db.Decimal(30, 8)
-  extra        Json?
-  createdAt    DateTime @default(now())
+  id        String   @id @default(uuid())
+  walletId  String
+  wallet    Wallet   @relation(fields: [walletId], references: [id])
+  contestId String
+  tokenFee  Decimal? @db.Decimal(30, 8)
+  extra     Json?
+  createdAt DateTime @default(now())
 
   @@index([contestId])
-  @@index([walletId])
+  @@index([walletId, contestId])
 }
