@@ -71,7 +71,7 @@ app.get(
 // ---------- Start ----------
 const PORT = parseInt(process.env.PORT || "10000", 10);
 
-// IMPORTANT: use 0.0.0.0 so Render detects the port
+// ✅ Critical fix for Render — MUST bind to 0.0.0.0, not localhost
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`✅ API running on http://0.0.0.0:${PORT}`);
+  console.log(`✅ API running at http://0.0.0.0:${PORT}`);
 });
