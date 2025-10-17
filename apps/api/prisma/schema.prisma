@@ -9,9 +9,27 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-/**
- * Core user of your app (admin or player).
- */
+/// Roles for your app’s users
+enum UserRole {
+  ADMIN
+  USER
+}
+
+/// Types of audit activities to capture
+enum ActivityType {
+  WALLET_CONNECTED
+  WALLET_DISCONNECTED
+  AUTH_SIGN_IN
+  AUTH_SIGN_OUT
+  CONTEST_VIEWED
+  CONTEST_JOINED
+  FEE_PAID
+  PARTICIPATION_SUBMITTED
+  PARTICIPATION_CANCELLED
+  ADMIN_VIEW_AUDIT
+}
+
+/// Core user of your app (admin or player).
 model User {
   id        String   @id @default(cuid())
   role      UserRole @default(USER)
@@ -25,9 +43,7 @@ model User {
   participations Participation[]
 }
 
-/**
- * A blockchain wallet that can sign in (SIWS / Phantom).
- */
+/// A blockchain wallet that can sign in (SIWS / Phantom).
 model Wallet {
   id        String   @id @default(cuid())
   address   String   @unique
@@ -36,86 +52,73 @@ model Wallet {
 
   // Optional owner
   userId String?
-  user   User?   @relation(fields: [userId], references: [id])
+  user   User?     @relation(fields: [userId], references: [id])
 
-  // Reverse relations (IMPORTANT: added sessions to fix your error)
-  sessions   Session[]
+  // Relations
+  sessions       Session[]
+  activities     Activity[]
+  participations Participation[]
+}
+
+/// Server-issued short-lived nonce used for SIWS.
+model Nonce {
+  id        String   @id @default(cuid())
+  value     String   @unique
+  expiresAt DateTime
+
+  // Optional linkage to a wallet/address if you want
+  walletId String?
+  wallet   Wallet?  @relation(fields: [walletId], references: [id])
+
+  createdAt DateTime @default(now())
+}
+
+/// Session (JWT jti or server-managed session).
+model Session {
+  id         String   @id @default(cuid())
+  jti        String?  @unique
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+  expiresAt  DateTime?
+
+  // Optional links
+  userId   String?
+  user     User?    @relation(fields: [userId], references: [id])
+
+  walletId String?
+  wallet   Wallet?  @relation(fields: [walletId], references: [id])
+
   activities Activity[]
 }
 
-/**
- * Server-issued short-lived nonce used for SIWS.
- */
-model Nonce {
-  id        String   @id @default(cuid())
-  wallet    String
-  nonce     String   @unique
-  msg       String
-  t         String
-  createdAt DateTime @default(now())
-  expiresAt DateTime
-}
-
-/**
- * Session (JWT jti or server-managed session).
- */
-model Session {
-  id     String  @id @default(cuid())
-  userId String?
-  user   User?   @relation(fields: [userId], references: [id])
-
-  walletId String?
-  wallet   Wallet? @relation(fields: [walletId], references: [id])
-
-  issuedAt  DateTime  @default(now())
-  expiresAt DateTime?
-  ip        String?
-  ua        String?
-}
-
-/**
- * Contest catalog.
- */
+/// Contest catalog.
 model Contest {
-  id          String    @id @default(cuid())
+  id          String   @id @default(cuid())
+  slug        String   @unique
   title       String
   description String?
-  startsAt    DateTime?
-  endsAt      DateTime?
-  createdAt   DateTime  @default(now())
+  // Fee in token units, use Decimal for precision
+  feeAmount   Decimal  @default(0)
+  feeToken    String?  // e.g. "SOL", "USDC"
+
+  startsAt DateTime?
+  endsAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   participations Participation[]
   activities     Activity[]
 }
 
-/**
- * Participation of a user in a contest, with fee paid and tx info.
- */
+/// Participation of a user in a contest, with fee paid and tx info.
 model Participation {
-  id     String  @id @default(cuid())
-  userId String?
-  user   User?   @relation(fields: [userId], references: [id])
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
 
-  contestId String?
-  contest   Contest? @relation(fields: [contestId], references: [id])
-
-  feeLamports BigInt   @default(0)
-  txSig       String?
-  joinedAt    DateTime @default(now())
-
-  activities Activity[]
-}
-
-/**
- * Audit trail of important events.
- */
-model Activity {
-  id        String       @id @default(cuid())
-  type      ActivityType
-  createdAt DateTime     @default(now())
-  ip        String?
-  ua        String?
-  meta      Json?
+  // Links
+  contestId String
+  contest   Contest  @relation(fields: [contestId], references: [id])
 
   userId String?
   user   User?   @relation(fields: [userId], references: [id])
@@ -123,27 +126,43 @@ model Activity {
   walletId String?
   wallet   Wallet? @relation(fields: [walletId], references: [id])
 
-  contestId String?
-  contest   Contest? @relation(fields: [contestId], references: [id])
+  // Payment details
+  feeAmount Decimal @default(0)
+  feeToken  String?
+  txHash    String?  @unique
 
-  participationId String?
-  participation   Participation? @relation(fields: [participationId], references: [id])
+  // Optional status
+  status String? // e.g. "PAID" | "PENDING" | "REFUNDED"
+
+  activities Activity[]
 }
 
-enum UserRole {
-  USER
-  ADMIN
-}
+/// Audit trail of important events.
+model Activity {
+  id        String       @id @default(cuid())
+  createdAt DateTime     @default(now())
+  type      ActivityType
 
-enum ActivityType {
-  CONNECT_WALLET
-  REQUEST_NONCE
-  VERIFY_SIGNATURE
-  LOGIN_SUCCESS
-  LOGIN_FAIL
-  REFRESH_TOKEN
-  LOGOUT
-  PARTICIPATE_CONTEST
-  PAY_FEE
-  ADMIN_ACTION
+  // Optional foreign keys to provide context
+  userId           String?
+  user             User?         @relation(fields: [userId], references: [id])
+
+  walletId         String?
+  wallet           Wallet?       @relation(fields: [walletId], references: [id])
+
+  sessionId        String?
+  session          Session?      @relation(fields: [sessionId], references: [id])
+
+  contestId        String?
+  contest          Contest?      @relation(fields: [contestId], references: [id])
+
+  participationId  String?
+  participation    Participation? @relation(fields: [participationId], references: [id])
+
+  // Request context
+  ip        String?
+  userAgent String?
+
+  // Extra JSON payload (e.g., request body, parsed SIWS msg, etc.)
+  meta Json?
 }
