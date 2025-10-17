@@ -9,10 +9,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// -----------------------------------------------------------------------------
-// MODELS
-// -----------------------------------------------------------------------------
-
 /**
  * Core user of your app (admin or player).
  */
@@ -27,6 +23,13 @@ model User {
   sessions       Session[]
   activities     Activity[]
   participations Participation[]
+
+  @@map("users")
+}
+
+enum UserRole {
+  ADMIN
+  USER
 }
 
 /**
@@ -40,13 +43,15 @@ model Wallet {
 
   // Optional owner
   userId String?
-  user   User?   @relation(fields: [userId], references: [id])
+  user   User?    @relation(fields: [userId], references: [id])
 
-  // Back-relations
-  nonces         Nonce[]
-  sessions       Session[]
-  activities     Activity[]
+  // Relations
+  nonces      Nonce[]
+  sessions    Session[]
+  activities  Activity[]
   participations Participation[]
+
+  @@map("wallets")
 }
 
 /**
@@ -54,54 +59,59 @@ model Wallet {
  */
 model Nonce {
   id        String   @id @default(cuid())
-  value     String   @unique
+  value     String
   expiresAt DateTime
+
+  // Link to wallet (optional)
+  walletId String?
+  wallet   Wallet?  @relation(fields: [walletId], references: [id])
+
   createdAt DateTime @default(now())
 
-  walletId String?
-  wallet   Wallet? @relation(fields: [walletId], references: [id])
-
   @@index([walletId])
+  @@map("nonces")
 }
 
 /**
  * Session (JWT jti or server-managed session).
  */
 model Session {
-  id        String    @id @default(cuid())
-  jti       String?   @unique
-  createdAt DateTime  @default(now())
+  id        String   @id
+  createdAt DateTime @default(now())
   expiresAt DateTime?
-  revokedAt DateTime?
-  ip        String?
-  userAgent String?
 
-  userId String?
-  user   User?   @relation(fields: [userId], references: [id])
+  // Optional links
+  userId   String?
+  user     User?    @relation(fields: [userId], references: [id])
 
   walletId String?
-  wallet   Wallet? @relation(fields: [walletId], references: [id])
+  wallet   Wallet?  @relation(fields: [walletId], references: [id])
+
+  activities Activity[]
 
   @@index([userId])
   @@index([walletId])
+  @@map("sessions")
 }
 
 /**
  * Contest catalog.
  */
 model Contest {
-  id          String        @id @default(cuid())
-  name        String
+  id          String   @id @default(cuid())
+  title       String
   description String?
-  entryFee    Decimal       @db.Decimal(65, 30)
-  status      ContestStatus @default(DRAFT)
+  entryFee    Decimal? @db.Decimal(18, 6)
   startsAt    DateTime?
   endsAt      DateTime?
-  createdAt   DateTime      @default(now())
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  // Relations
   participations Participation[]
   activities     Activity[]
+
+  @@map("contests")
 }
 
 /**
@@ -109,83 +119,74 @@ model Contest {
  */
 model Participation {
   id         String   @id @default(cuid())
-  createdAt  DateTime @default(now())
-  paidAmount Decimal  @db.Decimal(65, 30)
+  userId     String
+  contestId  String
+  walletId   String?
+
+  feePaid    Decimal? @db.Decimal(18, 6)
   txHash     String?
+  status     ParticipationStatus @default(PENDING)
+  joinedAt   DateTime @default(now())
 
-  userId String
-  user   User   @relation(fields: [userId], references: [id])
+  // Relations
+  user    User      @relation(fields: [userId], references: [id])
+  contest Contest   @relation(fields: [contestId], references: [id])
+  wallet  Wallet?   @relation(fields: [walletId], references: [id])
 
-  contestId String
-  contest   Contest @relation(fields: [contestId], references: [id])
-
-  // Optional wallet used to pay
-  walletId String?
-  wallet   Wallet? @relation(fields: [walletId], references: [id])
-
-  // Audit entries for this participation
   activities Activity[]
 
-  @@unique([userId, contestId]) // one active participation per user per contest (change if you allow multiple)
-  @@index([userId])
-  @@index([contestId])
+  @@unique([userId, contestId])
   @@index([walletId])
+  @@map("participations")
+}
+
+enum ParticipationStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
 }
 
 /**
  * Audit trail of important events.
  */
 model Activity {
-  id        String       @id @default(cuid())
-  createdAt DateTime     @default(now())
+  id        String   @id @default(cuid())
   type      ActivityType
   message   String?
   meta      Json?
+  ip        String?
+  userAgent String?
 
-  userId String?
-  user   User?   @relation(fields: [userId], references: [id])
-
-  walletId String?
-  wallet   Wallet? @relation(fields: [walletId], references: [id])
-
+  // Optional back-references to attach the event
+  userId          String?
+  walletId        String?
+  sessionId       String?
+  contestId       String?
   participationId String?
-  participation   Participation? @relation(fields: [participationId], references: [id])
 
-  contestId String?
-  contest   Contest? @relation(fields: [contestId], references: [id])
+  user          User?          @relation(fields: [userId], references: [id])
+  wallet        Wallet?        @relation(fields: [walletId], references: [id])
+  session       Session?       @relation(fields: [sessionId], references: [id])
+  contest       Contest?       @relation(fields: [contestId], references: [id])
+  participation Participation? @relation(fields: [participationId], references: [id])
+
+  createdAt DateTime @default(now())
 
   @@index([userId])
   @@index([walletId])
-  @@index([participationId])
+  @@index([sessionId])
   @@index([contestId])
-}
-
-// -----------------------------------------------------------------------------
-// ENUMS
-// -----------------------------------------------------------------------------
-
-enum UserRole {
-  USER
-  ADMIN
-}
-
-enum ContestStatus {
-  DRAFT
-  ACTIVE
-  CLOSED
+  @@index([participationId])
+  @@map("activities")
 }
 
 enum ActivityType {
-  USER_REGISTERED
   WALLET_CONNECTED
-  WALLET_VERIFIED
-  NONCE_ISSUED
-  NONCE_USED
-  SESSION_STARTED
-  SESSION_ENDED
-  CONTEST_CREATED
-  CONTEST_ACTIVATED
-  CONTEST_CLOSED
+  SIGN_IN_REQUESTED
+  SIGN_IN_SUCCEEDED
+  SIGN_IN_FAILED
   PARTICIPATION_CREATED
   PARTICIPATION_PAID
+  PARTICIPATION_CANCELLED
+  ADMIN_VIEWED_DASHBOARD
 }
