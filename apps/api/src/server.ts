@@ -6,8 +6,7 @@ import dotenv from "dotenv";
 import authRoutes from "./routes/auth";
 import adminActivities from "./routes/admin.activities";
 
-// Optional: Initialize dotenv to load local .env variables (useful for dev)
-dotenv.config();
+dotenv.config(); // Load env vars from .env
 
 const app = express();
 
@@ -27,7 +26,7 @@ app.use(
 );
 
 app.use(cookieParser());
-app.use(express.json()); // In case JSON parsing is needed
+app.use(express.json());
 
 // ---------- CORS ----------
 const parseOrigins = (s?: string) =>
@@ -53,14 +52,14 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
-// ---------- Health Check ----------
+// ---------- Health ----------
 app.get("/public/healthz", (_req, res) => res.json({ ok: true }));
 
 // ---------- Routes ----------
 app.use("/auth", authRoutes);
 app.use("/admin", adminActivities);
 
-// Compatibility aliases to reduce 404 noise; all resolve to /auth/me
+// Compatibility aliases for /auth/me
 const meHandler =
   authRoutes._router?.stack?.find?.((r: any) => r?.route?.path === "/me")
     ?.route?.stack?.[0]?.handle;
@@ -74,9 +73,8 @@ app.get(
   callMe
 );
 
-// ---------- Start Server ----------
+// ---------- Start ----------
 const PORT = parseInt(process.env.PORT || "10000", 10);
-
-app.listen(PORT, () => {
-  console.log(`✅ Server started. Listening on port: ${PORT}`);
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`✅ Server is listening on http://0.0.0.0:${PORT}`);
 });
