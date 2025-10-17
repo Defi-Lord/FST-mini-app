@@ -4,15 +4,12 @@ import { PrismaClient } from '@prisma/client';
 const app = express();
 const prisma = new PrismaClient();
 
-// Middleware (optional)
-// app.use(express.json());
-
-app.get('/', async (req, res) => {
-  res.send('Server is running!');
+app.get('/', (req, res) => {
+  res.send('✅ FST Mini App API is live on Render!');
 });
 
-// Use Render's required port and host
-const PORT = process.env.PORT || 3000;
+const PORT = parseInt(process.env.PORT || '3000', 10);
+
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`✅ Server is listening on port ${PORT}`);
+  console.log(`✅ Server is running at http://0.0.0.0:${PORT}`);
 });
