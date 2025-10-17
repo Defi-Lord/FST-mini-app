@@ -9,6 +9,29 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ───────────────────────────────────────────────────────────
+// Enums
+// ───────────────────────────────────────────────────────────
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum ActivityType {
+  CONNECT_WALLET
+  SIGN_IN
+  SIGN_OUT
+  JOIN_CONTEST
+  PAY_FEE
+  SUBMIT_SCORE
+  UPDATE_PROFILE
+  ADMIN_ACTION
+}
+
+// ───────────────────────────────────────────────────────────
+// Models
+// ───────────────────────────────────────────────────────────
+
 /**
  * Core user of your app (admin or player).
  */
@@ -23,13 +46,6 @@ model User {
   sessions       Session[]
   activities     Activity[]
   participations Participation[]
-
-  @@map("users")
-}
-
-enum UserRole {
-  ADMIN
-  USER
 }
 
 /**
@@ -43,150 +59,117 @@ model Wallet {
 
   // Optional owner
   userId String?
-  user   User?    @relation(fields: [userId], references: [id])
+  user   User?   @relation(fields: [userId], references: [id])
 
-  // Relations
-  nonces      Nonce[]
-  sessions    Session[]
-  activities  Activity[]
+  // Back-relations
+  sessions       Session[]
+  nonces         Nonce[]
+  activities     Activity[]
   participations Participation[]
-
-  @@map("wallets")
 }
 
 /**
  * Server-issued short-lived nonce used for SIWS.
  */
 model Nonce {
-  id        String   @id @default(cuid())
-  value     String
+  id        String    @id @default(cuid())
+  value     String    @unique
   expiresAt DateTime
+  createdAt DateTime  @default(now())
+  usedAt    DateTime?
 
-  // Link to wallet (optional)
   walletId String?
-  wallet   Wallet?  @relation(fields: [walletId], references: [id])
-
-  createdAt DateTime @default(now())
+  wallet   Wallet? @relation(fields: [walletId], references: [id])
 
   @@index([walletId])
-  @@map("nonces")
 }
 
 /**
  * Session (JWT jti or server-managed session).
  */
 model Session {
-  id        String   @id
+  id        String   @id @default(cuid())
+  jti       String   @unique
   createdAt DateTime @default(now())
-  expiresAt DateTime?
+  updatedAt DateTime @updatedAt
 
-  // Optional links
-  userId   String?
-  user     User?    @relation(fields: [userId], references: [id])
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
 
   walletId String?
-  wallet   Wallet?  @relation(fields: [walletId], references: [id])
+  wallet   Wallet? @relation(fields: [walletId], references: [id])
 
   activities Activity[]
 
   @@index([userId])
   @@index([walletId])
-  @@map("sessions")
 }
 
 /**
  * Contest catalog.
  */
 model Contest {
-  id          String   @id @default(cuid())
-  title       String
-  description String?
-  entryFee    Decimal? @db.Decimal(18, 6)
-  startsAt    DateTime?
-  endsAt      DateTime?
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String    @id @default(cuid())
+  slug      String    @unique
+  title     String
+  entryFee  Int // store fee in minor units (e.g. lamports)
+  token     String? // optional symbol/code
+  startsAt  DateTime?
+  endsAt    DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   participations Participation[]
   activities     Activity[]
-
-  @@map("contests")
 }
 
 /**
  * Participation of a user in a contest, with fee paid and tx info.
  */
 model Participation {
-  id         String   @id @default(cuid())
-  userId     String
-  contestId  String
-  walletId   String?
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
 
-  feePaid    Decimal? @db.Decimal(18, 6)
-  txHash     String?
-  status     ParticipationStatus @default(PENDING)
-  joinedAt   DateTime @default(now())
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
 
-  // Relations
-  user    User      @relation(fields: [userId], references: [id])
-  contest Contest   @relation(fields: [contestId], references: [id])
-  wallet  Wallet?   @relation(fields: [walletId], references: [id])
+  contestId String
+  contest   Contest @relation(fields: [contestId], references: [id])
 
-  activities Activity[]
+  walletId String?
+  wallet   Wallet? @relation(fields: [walletId], references: [id])
+
+  feePaid Int? // minor units
+  txHash  String? // chain tx id
 
   @@unique([userId, contestId])
+  @@index([contestId])
   @@index([walletId])
-  @@map("participations")
-}
-
-enum ParticipationStatus {
-  PENDING
-  CONFIRMED
-  CANCELLED
 }
 
 /**
  * Audit trail of important events.
  */
 model Activity {
-  id        String   @id @default(cuid())
+  id        String       @id @default(cuid())
   type      ActivityType
   message   String?
-  meta      Json?
-  ip        String?
-  userAgent String?
+  createdAt DateTime     @default(now())
 
-  // Optional back-references to attach the event
-  userId          String?
-  walletId        String?
-  sessionId       String?
-  contestId       String?
-  participationId String?
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
 
-  user          User?          @relation(fields: [userId], references: [id])
-  wallet        Wallet?        @relation(fields: [walletId], references: [id])
-  session       Session?       @relation(fields: [sessionId], references: [id])
-  contest       Contest?       @relation(fields: [contestId], references: [id])
-  participation Participation? @relation(fields: [participationId], references: [id])
+  walletId String?
+  wallet   Wallet? @relation(fields: [walletId], references: [id])
 
-  createdAt DateTime @default(now())
+  contestId String?
+  contest   Contest? @relation(fields: [contestId], references: [id])
+
+  sessionId String?
+  session   Session? @relation(fields: [sessionId], references: [id])
 
   @@index([userId])
   @@index([walletId])
-  @@index([sessionId])
   @@index([contestId])
-  @@index([participationId])
-  @@map("activities")
-}
-
-enum ActivityType {
-  WALLET_CONNECTED
-  SIGN_IN_REQUESTED
-  SIGN_IN_SUCCEEDED
-  SIGN_IN_FAILED
-  PARTICIPATION_CREATED
-  PARTICIPATION_PAID
-  PARTICIPATION_CANCELLED
-  ADMIN_VIEWED_DASHBOARD
+  @@index([sessionId])
 }
