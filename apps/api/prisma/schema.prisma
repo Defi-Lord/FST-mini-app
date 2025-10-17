@@ -1,41 +1,149 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/**
+ * Core user of your app (admin or player).
+ */
+model User {
+  id        String   @id @default(cuid())
+  role      UserRole @default(USER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  wallets        Wallet[]
+  sessions       Session[]
+  activities     Activity[]
+  participations Participation[]
+}
+
+/**
+ * A blockchain wallet that can sign in (SIWS / Phantom).
+ */
 model Wallet {
-  id        String   @id @default(uuid())
+  id        String   @id @default(cuid())
   address   String   @unique
+  provider  String?
   createdAt DateTime @default(now())
-  userId    String?
-  user      User?    @relation(fields: [userId], references: [id])
-  events    Activity[]
-  ContestParticipation ContestParticipation[]
+
+  // Optional owner
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
+
+  // Reverse relations (IMPORTANT: added sessions to fix your error)
+  sessions   Session[]
+  activities Activity[]
 }
 
-model Activity {
-  id        String    @id @default(uuid())
-  walletId  String?
-  wallet    Wallet?   @relation(fields: [walletId], references: [id])
-  userId    String?
-  user      User?     @relation(fields: [userId], references: [id])
-  action    String
-  subject   String?
-  metadata  Json?
+/**
+ * Server-issued short-lived nonce used for SIWS.
+ */
+model Nonce {
+  id        String   @id @default(cuid())
+  wallet    String
+  nonce     String   @unique
+  msg       String
+  t         String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+}
+
+/**
+ * Session (JWT jti or server-managed session).
+ */
+model Session {
+  id     String  @id @default(cuid())
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
+
+  walletId String?
+  wallet   Wallet? @relation(fields: [walletId], references: [id])
+
+  issuedAt  DateTime  @default(now())
+  expiresAt DateTime?
   ip        String?
-  userAgent String?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-
-  @@index([action, createdAt])
-  @@index([walletId, createdAt])
-  @@index([userId, createdAt])
+  ua        String?
 }
 
-model ContestParticipation {
-  id        String   @id @default(uuid())
-  walletId  String
-  wallet    Wallet   @relation(fields: [walletId], references: [id])
-  contestId String
-  tokenFee  Decimal? @db.Decimal(30, 8)
-  extra     Json?
-  createdAt DateTime @default(now())
+/**
+ * Contest catalog.
+ */
+model Contest {
+  id          String    @id @default(cuid())
+  title       String
+  description String?
+  startsAt    DateTime?
+  endsAt      DateTime?
+  createdAt   DateTime  @default(now())
 
-  @@index([contestId])
-  @@index([walletId, contestId])
+  participations Participation[]
+  activities     Activity[]
+}
+
+/**
+ * Participation of a user in a contest, with fee paid and tx info.
+ */
+model Participation {
+  id     String  @id @default(cuid())
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
+
+  contestId String?
+  contest   Contest? @relation(fields: [contestId], references: [id])
+
+  feeLamports BigInt   @default(0)
+  txSig       String?
+  joinedAt    DateTime @default(now())
+
+  activities Activity[]
+}
+
+/**
+ * Audit trail of important events.
+ */
+model Activity {
+  id        String       @id @default(cuid())
+  type      ActivityType
+  createdAt DateTime     @default(now())
+  ip        String?
+  ua        String?
+  meta      Json?
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
+
+  walletId String?
+  wallet   Wallet? @relation(fields: [walletId], references: [id])
+
+  contestId String?
+  contest   Contest? @relation(fields: [contestId], references: [id])
+
+  participationId String?
+  participation   Participation? @relation(fields: [participationId], references: [id])
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum ActivityType {
+  CONNECT_WALLET
+  REQUEST_NONCE
+  VERIFY_SIGNATURE
+  LOGIN_SUCCESS
+  LOGIN_FAIL
+  REFRESH_TOKEN
+  LOGOUT
+  PARTICIPATE_CONTEST
+  PAY_FEE
+  ADMIN_ACTION
 }
