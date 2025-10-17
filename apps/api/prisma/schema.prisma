@@ -1,4 +1,4 @@
-// prisma/schema.prisma
+// apps/api/prisma/schema.prisma
 
 generator client {
   provider = "prisma-client-js"
@@ -9,32 +9,37 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ───────────────────────────────────────────────────────────
-// Enums
-// ───────────────────────────────────────────────────────────
+/// Roles for core users of your app.
 enum UserRole {
-  USER
   ADMIN
+  USER
 }
 
+/// High-level activity types for the audit trail.
 enum ActivityType {
-  CONNECT_WALLET
-  SIGN_IN
-  SIGN_OUT
-  JOIN_CONTEST
-  PAY_FEE
-  SUBMIT_SCORE
-  UPDATE_PROFILE
-  ADMIN_ACTION
+  WALLET_CONNECTED
+  WALLET_DISCONNECTED
+  LOGIN
+  LOGOUT
+  NONCE_ISSUED
+  NONCE_USED
+  CONTEST_VIEW
+  CONTEST_JOINED
+  FEE_PAID
+  FEE_REFUNDED
+  PARTICIPATION_STATUS_CHANGED
+  CUSTOM
 }
 
-// ───────────────────────────────────────────────────────────
-// Models
-// ───────────────────────────────────────────────────────────
+/// Participation status for a contest.
+enum ParticipationStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  REJECTED
+}
 
-/**
- * Core user of your app (admin or player).
- */
+/// Core user of your app (admin or player).
 model User {
   id        String   @id @default(cuid())
   role      UserRole @default(USER)
@@ -46,11 +51,11 @@ model User {
   sessions       Session[]
   activities     Activity[]
   participations Participation[]
+
+  @@map("users")
 }
 
-/**
- * A blockchain wallet that can sign in (SIWS / Phantom).
- */
+/// A blockchain wallet that can sign in (SIWS / Phantom).
 model Wallet {
   id        String   @id @default(cuid())
   address   String   @unique
@@ -62,36 +67,37 @@ model Wallet {
   user   User?   @relation(fields: [userId], references: [id])
 
   // Back-relations
-  sessions       Session[]
   nonces         Nonce[]
+  sessions       Session[]
   activities     Activity[]
   participations Participation[]
+
+  @@index([userId])
+  @@map("wallets")
 }
 
-/**
- * Server-issued short-lived nonce used for SIWS.
- */
+/// Server-issued short-lived nonce used for SIWS.
 model Nonce {
-  id        String    @id @default(cuid())
-  value     String    @unique
+  id        String   @id @default(cuid())
+  value     String
   expiresAt DateTime
-  createdAt DateTime  @default(now())
-  usedAt    DateTime?
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
 
   walletId String?
   wallet   Wallet? @relation(fields: [walletId], references: [id])
 
   @@index([walletId])
+  @@map("nonces")
 }
 
-/**
- * Session (JWT jti or server-managed session).
- */
+/// Session (JWT jti or server-managed session).
 model Session {
-  id        String   @id @default(cuid())
-  jti       String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String    @id @default(cuid())
+  createdAt  DateTime  @default(now())
+  validUntil DateTime?
+  ip         String?
+  userAgent  String?
 
   userId String?
   user   User?   @relation(fields: [userId], references: [id])
@@ -103,17 +109,17 @@ model Session {
 
   @@index([userId])
   @@index([walletId])
+  @@map("sessions")
 }
 
-/**
- * Contest catalog.
- */
+/// Contest catalog.
 model Contest {
   id        String    @id @default(cuid())
   slug      String    @unique
   title     String
-  entryFee  Int // store fee in minor units (e.g. lamports)
-  token     String? // optional symbol/code
+  /// Optional entry fee in your base unit (e.g., lamports/wei/cents)
+  entryFee  Int?
+  metadata  Json?
   startsAt  DateTime?
   endsAt    DateTime?
   createdAt DateTime  @default(now())
@@ -121,41 +127,51 @@ model Contest {
 
   participations Participation[]
   activities     Activity[]
+
+  @@map("contests")
 }
 
-/**
- * Participation of a user in a contest, with fee paid and tx info.
- */
+/// Participation of a user in a contest, with fee and tx info.
 model Participation {
   id        String   @id @default(cuid())
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  userId String
-  user   User   @relation(fields: [userId], references: [id])
+  status  ParticipationStatus @default(PENDING)
+  /// Paid fee in base unit (e.g., lamports/wei/cents)
+  paidFee Int?
+  txHash  String?
 
+  // Relations
   contestId String
   contest   Contest @relation(fields: [contestId], references: [id])
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
 
   walletId String?
   wallet   Wallet? @relation(fields: [walletId], references: [id])
 
-  feePaid Int? // minor units
-  txHash  String? // chain tx id
+  activities Activity[]
 
-  @@unique([userId, contestId])
   @@index([contestId])
+  @@index([userId])
   @@index([walletId])
+  @@map("participations")
 }
 
-/**
- * Audit trail of important events.
- */
+/// Audit trail of important events.
 model Activity {
-  id        String       @id @default(cuid())
-  type      ActivityType
-  message   String?
-  createdAt DateTime     @default(now())
+  id          String       @id @default(cuid())
+  createdAt   DateTime     @default(now())
+  type        ActivityType
+  description String?
+  /// Optional numeric amount (fees, rewards) in base unit
+  amount      Int?
+  txHash      String?
+  metadata    Json?
 
+  // Foreign keys (all optional to let you log broadly)
   userId String?
   user   User?   @relation(fields: [userId], references: [id])
 
@@ -168,8 +184,13 @@ model Activity {
   sessionId String?
   session   Session? @relation(fields: [sessionId], references: [id])
 
+  participationId String?
+  participation   Participation? @relation(fields: [participationId], references: [id])
+
   @@index([userId])
   @@index([walletId])
   @@index([contestId])
   @@index([sessionId])
+  @@index([participationId])
+  @@map("activities")
 }

@@ -2,10 +2,16 @@ import express from "express";
 import helmet from "helmet";
 import cors from "cors";
 import cookieParser from "cookie-parser";
+import { PrismaClient } from "@prisma/client";
 import authRoutes from "./routes/auth";
 import adminActivities from "./routes/admin.activities";
 
 const app = express();
+const prisma = new PrismaClient();
+
+// ---------- Middleware ----------
+app.use(express.json()); // Body parser
+app.use(cookieParser());
 
 // ---------- Security ----------
 app.use(helmet({
@@ -19,8 +25,6 @@ app.use(helmet({
   crossOriginOpenerPolicy: { policy: "same-origin" },
   crossOriginResourcePolicy: { policy: "same-origin" }
 }));
-
-app.use(cookieParser());
 
 // ---------- CORS ----------
 const parseOrigins = (s?: string) =>
@@ -61,8 +65,21 @@ const callMe = (req: any, res: any, next: any) => {
 };
 app.get(["/me", "/api/me", "/users/me", "/auth/me", "/whoami", "/session", "/auth/session"], callMe);
 
-// ---------- Start ----------
+// ---------- Start Server ----------
 const PORT = parseInt(process.env.PORT || "10000", 10);
-app.listen(PORT, () => {
-  console.log(`API running on :${PORT}`);
-});
+
+async function main() {
+  try {
+    await prisma.$connect();
+    console.log("✅ Connected to database");
+
+    app.listen(PORT, () => {
+      console.log(`🚀 API running on port ${PORT}`);
+    });
+  } catch (error) {
+    console.error("❌ Failed to connect to database", error);
+    process.exit(1);
+  }
+}
+
+main();
