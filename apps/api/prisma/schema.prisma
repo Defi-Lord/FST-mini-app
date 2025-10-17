@@ -9,6 +9,10 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// -----------------------------------------------------------------------------
+// MODELS
+// -----------------------------------------------------------------------------
+
 /**
  * Core user of your app (admin or player).
  */
@@ -38,11 +42,11 @@ model Wallet {
   userId String?
   user   User?   @relation(fields: [userId], references: [id])
 
-  // Relations (back-relations must exist for Prisma)
-  nonces        Nonce[] // <-- fixes Render error: opposite side of Nonce.wallet
-  sessions      Session[]
-  activities    Activity[]
-  Participation Participation[]
+  // Back-relations
+  nonces         Nonce[]
+  sessions       Session[]
+  activities     Activity[]
+  participations Participation[]
 }
 
 /**
@@ -119,10 +123,10 @@ model Participation {
   walletId String?
   wallet   Wallet? @relation(fields: [walletId], references: [id])
 
-  // Activities pointing to this participation
+  // Audit entries for this participation
   activities Activity[]
 
-  @@unique([userId, contestId]) // one active participation per user per contest (adjust if needed)
+  @@unique([userId, contestId]) // one active participation per user per contest (change if you allow multiple)
   @@index([userId])
   @@index([contestId])
   @@index([walletId])
@@ -155,6 +159,10 @@ model Activity {
   @@index([participationId])
   @@index([contestId])
 }
+
+// -----------------------------------------------------------------------------
+// ENUMS
+// -----------------------------------------------------------------------------
 
 enum UserRole {
   USER
