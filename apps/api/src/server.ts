@@ -4,7 +4,6 @@ import { PrismaClient } from '@prisma/client';
 const app = express();
 const prisma = new PrismaClient();
 
-// Render requires binding to 0.0.0.0 and using process.env.PORT
 const PORT = parseInt(process.env.PORT || '3000', 10);
 
 app.get('/', (_req, res) => {
