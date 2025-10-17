@@ -2,11 +2,12 @@ import express from "express";
 import helmet from "helmet";
 import cors from "cors";
 import cookieParser from "cookie-parser";
+import dotenv from "dotenv";
 import authRoutes from "./routes/auth";
 import adminActivities from "./routes/admin.activities";
-import dotenv from "dotenv";
 
-dotenv.config(); // Load .env file if available
+// Optional: Initialize dotenv to load local .env variables (useful for dev)
+dotenv.config();
 
 const app = express();
 
@@ -26,6 +27,7 @@ app.use(
 );
 
 app.use(cookieParser());
+app.use(express.json()); // In case JSON parsing is needed
 
 // ---------- CORS ----------
 const parseOrigins = (s?: string) =>
@@ -58,12 +60,10 @@ app.get("/public/healthz", (_req, res) => res.json({ ok: true }));
 app.use("/auth", authRoutes);
 app.use("/admin", adminActivities);
 
-// ---------- Aliases for /auth/me ----------
+// Compatibility aliases to reduce 404 noise; all resolve to /auth/me
 const meHandler =
-  authRoutes._router?.stack?.find?.(
-    (r: any) => r?.route?.path === "/me"
-  )?.route?.stack?.[0]?.handle;
-
+  authRoutes._router?.stack?.find?.((r: any) => r?.route?.path === "/me")
+    ?.route?.stack?.[0]?.handle;
 const callMe = (req: any, res: any, next: any) => {
   if (meHandler) return meHandler(req, res, next);
   return res.status(404).json({ error: "me_not_available" });
@@ -76,6 +76,7 @@ app.get(
 
 // ---------- Start Server ----------
 const PORT = parseInt(process.env.PORT || "10000", 10);
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`✅ API running on http://0.0.0.0:${PORT}`);
+
+app.listen(PORT, () => {
+  console.log(`✅ Server started. Listening on port: ${PORT}`);
 });
