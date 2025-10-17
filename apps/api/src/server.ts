@@ -1,9 +1,18 @@
-import { createServer } from 'http';
-import app from './app'; // Adjust path if needed
+import express from 'express';
+import { PrismaClient } from '@prisma/client';
 
-const PORT = parseInt(process.env.PORT || '3000', 10);
+const app = express();
+const prisma = new PrismaClient();
 
-// 🧠 This is the critical part for Render to detect your server:
-createServer(app).listen(PORT, '0.0.0.0', () => {
-  console.log(`✅ Server running on http://0.0.0.0:${PORT}`);
+// Middleware (optional)
+// app.use(express.json());
+
+app.get('/', async (req, res) => {
+  res.send('Server is running!');
+});
+
+// Use Render's required port and host
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`✅ Server is listening on port ${PORT}`);
 });
