@@ -2,11 +2,8 @@ import express from "express";
 import helmet from "helmet";
 import cors from "cors";
 import cookieParser from "cookie-parser";
-import dotenv from "dotenv";
 import authRoutes from "./routes/auth";
 import adminActivities from "./routes/admin.activities";
-
-dotenv.config(); // Load env vars from .env
 
 const app = express();
 
@@ -26,7 +23,6 @@ app.use(
 );
 
 app.use(cookieParser());
-app.use(express.json());
 
 // ---------- CORS ----------
 const parseOrigins = (s?: string) =>
@@ -59,7 +55,7 @@ app.get("/public/healthz", (_req, res) => res.json({ ok: true }));
 app.use("/auth", authRoutes);
 app.use("/admin", adminActivities);
 
-// Compatibility aliases for /auth/me
+// Compatibility aliases to reduce 404 noise; all resolve to /auth/me
 const meHandler =
   authRoutes._router?.stack?.find?.((r: any) => r?.route?.path === "/me")
     ?.route?.stack?.[0]?.handle;
@@ -67,7 +63,6 @@ const callMe = (req: any, res: any, next: any) => {
   if (meHandler) return meHandler(req, res, next);
   return res.status(404).json({ error: "me_not_available" });
 };
-
 app.get(
   ["/me", "/api/me", "/users/me", "/auth/me", "/whoami", "/session", "/auth/session"],
   callMe
@@ -75,6 +70,8 @@ app.get(
 
 // ---------- Start ----------
 const PORT = parseInt(process.env.PORT || "10000", 10);
+
+// IMPORTANT: use 0.0.0.0 so Render detects the port
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`✅ Server is listening on http://0.0.0.0:${PORT}`);
+  console.log(`✅ API running on http://0.0.0.0:${PORT}`);
 });
