@@ -1,23 +1,34 @@
-import express from 'express'
-import { PrismaClient } from '@prisma/client'
-import dotenv from 'dotenv'
+import express from 'express';
+import cors from 'cors';
+import morgan from 'morgan';
+import { config } from 'dotenv';
+import router from './routes/index.js'; // .js needed in Node ESM mode
+import { PrismaClient } from '@prisma/client';
 
-dotenv.config()
+config(); // Load env vars from .env
+const prisma = new PrismaClient();
 
-const app = express()
-const prisma = new PrismaClient()
+const app = express();
 
-// Basic health check
-app.get('/', (_req, res) => {
-  res.send('FST API is live 🎉')
-})
+// Middlewares
+app.use(morgan('dev'));
+app.use(cors({
+  origin: process.env.CORS_ORIGIN?.split(',') || '*',
+}));
+app.use(express.json());
 
-// Add other routes here
-// app.use('/api/v1/auth', authRoutes) // Example
+// Routes
+app.use('/api', router);
 
-// 🚨 Important for Render port detection
-const PORT = parseInt(process.env.PORT || '3000', 10)
+// Health check
+app.get('/', (req, res) => {
+  res.send('API server is up and running');
+});
 
+// Bind to PORT from env or fallback to 3000
+const PORT = process.env.PORT || 3000;
+
+// ✅ Important: Use 0.0.0.0 for Render to detect the service
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Server is running on http://0.0.0.0:${PORT}`)
-})
+  console.log(`Server listening on http://0.0.0.0:${PORT}`);
+});

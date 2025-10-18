@@ -1,4 +1,4 @@
-import { prisma } from "./prisma";
+import { prisma } from "./prisma.ts";
 
 export async function ensureWallet(address?: string) {
   if (!address) return null;
