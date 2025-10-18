@@ -1,6 +1,6 @@
 // apps/api/src/routes/contests.public.ts
 import { Router } from 'express';
-import { prisma } from '../utils/prisma.js';
+import { prisma } from '../utils/prisma';
 import { auth } from '../middleware/auth';
 import { Connection, PublicKey } from '@solana/web3.js';
 
