@@ -1,6 +1,6 @@
 // apps/api/src/routes/admin.scoring.ts
 import { Router } from 'express';
-import { prisma } from '../utils/prisma';
+import { prisma } from '../utils/prisma.js';
 import fetch from 'node-fetch';
 
 /**

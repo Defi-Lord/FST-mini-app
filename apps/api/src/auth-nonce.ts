@@ -5,7 +5,7 @@ import bs58 from "bs58";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import type { Express } from "express";
-import { prisma } from "./utils/prisma";
+import { prisma } from '../utils/prisma.js';
 import { z } from "zod";
 
 const NONCE_TTL_MS = 5 * 60 * 1000; // 5 minutes

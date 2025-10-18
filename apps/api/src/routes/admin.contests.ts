@@ -1,7 +1,7 @@
 // apps/api/src/routes/admin.contests.ts
 import { Router } from 'express';
 import * as crypto from 'crypto';
-import { prisma } from '../utils/prisma';
+import { prisma } from '../utils/prisma.js';
 
 const r = Router();
 

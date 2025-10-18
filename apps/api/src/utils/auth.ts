@@ -9,5 +9,5 @@ export function isAuthed(): boolean {
 }
 
 export function signOut() {
-  localStorage.removeItem('auth_token');
+  localStorage.setItem("user", JSON.stringify(data));
 }

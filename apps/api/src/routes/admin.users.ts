@@ -1,6 +1,6 @@
 // apps/api/src/routes/admin.users.ts
 import { Router } from 'express';
-import { prisma } from '../utils/prisma';
+import { prisma } from '../utils/prisma.js';
 
 const r = Router();
 
