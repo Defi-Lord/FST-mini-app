@@ -1,21 +1,21 @@
 import express from 'express';
 import cors from 'cors';
+import dotenv from 'dotenv';
 import morgan from 'morgan';
-import { config } from 'dotenv';
-import router from './routes/index.js'; // 👈 Add .js extension
 
-config(); // Load .env
+dotenv.config();
 
 const app = express();
-
-app.use(morgan('dev'));
-app.use(cors());
-app.use(express.json());
-
-app.use('/api', router);
-
 const PORT = process.env.PORT || 3000;
 
+app.use(cors({ origin: process.env.CORS_ORIGIN }));
+app.use(express.json());
+app.use(morgan('dev')); // 💥 Add it here
+
+// Routes
+import routes from './routes/index.js';
+app.use('/api', routes);
+
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Server listening on http://0.0.0.0:${PORT}`);
+  console.log(`🚀 Server is running on port ${PORT}`);
 });
