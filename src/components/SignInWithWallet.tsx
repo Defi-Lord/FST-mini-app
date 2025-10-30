@@ -26,7 +26,7 @@ export default function SignInWithWallet({ onSignedIn }: { onSignedIn?: () => vo
 
       if (!provider.signMessage) throw new Error('Wallet cannot sign messages');
       const { signature } = await provider.signMessage(new TextEncoder().encode(nonce), 'utf8');
-      const sigB64 = btoa(String.fromCharCode(...Array.from(signature)));
+      const sigB64 = btoa(String.fromCharCode(...Array.from(signature as Uint8Array)));
 
       const verifyRes = await fetch(`${API_BASE}/auth/verify`, {
         method: 'POST',
