@@ -14,3 +14,7 @@ Thumbs.db
 .vscode/*
 !.vscode/extensions.json
 *.tsbuildinfo
+
+# Ignore nested or temp project copies
+apps/api/FST-mini-app/
+apps/api/apps/api/FST-mini-app/
