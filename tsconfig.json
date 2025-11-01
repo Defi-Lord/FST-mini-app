@@ -14,8 +14,13 @@
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    "types": ["node"]
+    "types": ["vite/client", "node"]
   },
   "include": ["src"],
-  "exclude": ["node_modules", src/server.ts", "src/routes", "src/utils/prisma"]
+  "exclude": [
+    "node_modules",
+    "src/server.ts",
+    "src/routes",
+    "src/utils/prisma"
+  ]
 }

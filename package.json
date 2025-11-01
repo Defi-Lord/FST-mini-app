@@ -4,14 +4,15 @@
   "type": "module",
   "main": "dist/server.js",
   "scripts": {
-    "build": "tsc",
-    "dev": "nodemon --watch './src/**/*.ts' --exec 'ts-node' src/server.ts",
+    "dev": "vite",
+    "build": "tsc && vite build",
     "start": "npx prisma db push --schema ./prisma/schema.prisma && node dist/server.js",
     "lint": "eslint . --ext .ts",
     "lint:fix": "eslint . --ext .ts --fix",
     "format": "prettier --write .",
     "generate": "prisma generate",
-    "db:push": "prisma db push --schema ./prisma/schema.prisma"
+    "db:push": "prisma db push --schema ./prisma/schema.prisma",
+    "preview": "vite preview"
   },
   "dependencies": {
     "@prisma/client": "^6.17.1",
@@ -20,11 +21,18 @@
     "@solana/wallet-adapter-react-ui": "^0.9.39",
     "@solana/wallet-adapter-wallets": "^0.19.37",
     "@solana/web3.js": "^1.98.4",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "buffer": "^6.0.3",
     "cors": "^2.8.5",
+    "crypto-browserify": "^3.12.1",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "jsonwebtoken": "^9.0.2",
-    "morgan": "^1.10.0"
+    "morgan": "^1.10.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "stream-browserify": "^3.0.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
@@ -32,10 +40,12 @@
     "@types/jsonwebtoken": "^9.0.4",
     "@types/morgan": "^1.9.4",
     "@types/node": "^20.10.6",
+    "@vitejs/plugin-react": "^4.3.2",
     "eslint": "^8.56.0",
     "nodemon": "^3.1.0",
     "prettier": "^3.2.5",
     "ts-node": "^10.9.2",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "vite": "^5.4.10"
   }
 }

@@ -1,23 +1,23 @@
 // src/ui/App.tsx
-import { useState } from 'react'
-import { AppProvider } from './state'
+import { useState } from 'react';
+import { AppProvider } from '../state';
 
-import Landing from '../pages_Landing'
-import Rewards from '../pages_Rewards'
-import CreateTeam from '../pages_CreateTeam'
-import ViewTeam from '../pages_ViewTeam'
-import JoinContest from '../pages_JoinContest'
-import Leaderboard from '../pages_Leaderboard'
-import HomeHub from '../pages_HomeHub'
-import Top10 from '../pages_Top10'
-import HowToPlay from '../pages_HowToPlay'
-import AboutUs from '../pages_AboutUs'
-import ContactUs from '../pages_ContactUs'
-import ConnectWallet from '../pages_ConnectWallet' // ⬅️ NEW
+import Landing from '../pages_Landing';
+import Rewards from '../pages_Rewards';
+import CreateTeam from '../pages_CreateTeam';
+import ViewTeam from '../pages_ViewTeam';
+import JoinContest from '../pages_JoinContest';
+import Leaderboard from '../pages_Leaderboard';
+import HomeHub from '../pages_HomeHub';
+import Top10 from '../pages_Top10';
+import HowToPlay from '../pages_HowToPlay';
+import AboutUs from '../pages_AboutUs';
+import ContactUs from '../pages_ContactUs';
+import ConnectWallet from '../pages_ConnectWallet';
 
 type Route =
   | 'landing'
-  | 'connect'       // ⬅️ NEW
+  | 'connect'
   | 'home'
   | 'createTeam'
   | 'viewTeam'
@@ -27,30 +27,35 @@ type Route =
   | 'howToPlay'
   | 'about'
   | 'contact'
-  | 'rewards'
+  | 'rewards';
 
 export default function App() {
-  const [stack, setStack] = useState<Route[]>(['landing'])
-  const route = stack[stack.length - 1]
-  const go = (to: Route) => () => setStack(prev => [...prev, to])
-  const back = () => setStack(prev => (prev.length > 1 ? prev.slice(0, -1) : prev))
+  const [stack, setStack] = useState<Route[]>(['landing']);
+  const route = stack[stack.length - 1];
 
-  // For storing the connected wallet now (local only).
+  const go = (to: Route) => () => setStack(prev => [...prev, to]);
+  const back = () =>
+    setStack(prev => (prev.length > 1 ? prev.slice(0, -1) : prev));
+
+  // Wallet connection (local only)
   const [wallet, setWallet] = useState<string | null>(() => {
-    try { return localStorage.getItem('sol_wallet') } catch { return null }
-  })
+    try {
+      return localStorage.getItem('sol_wallet');
+    } catch {
+      return null;
+    }
+  });
 
   const handleConnected = (addr: string) => {
-    setWallet(addr)
-    // Move straight to Join Contest after connecting (as requested)
-    setStack(prev => [...prev, 'joinContest'])
-  }
+    setWallet(addr);
+    // Move straight to Join Contest after connecting
+    setStack(prev => [...prev, 'joinContest']);
+  };
 
   return (
     <AppProvider>
       {route === 'landing' && (
         <Landing
-          // After landing, go to Connect Wallet
           onGetStarted={go('connect')}
           onRewards={go('rewards')}
         />
@@ -64,7 +69,10 @@ export default function App() {
       )}
 
       {route === 'rewards' && (
-        <Rewards onBack={back} onEnterApp={go('home')} />
+        <Rewards
+          onBack={back}
+          onEnterApp={go('home')}
+        />
       )}
 
       {route === 'home' && (
@@ -84,15 +92,33 @@ export default function App() {
         />
       )}
 
-      {route === 'createTeam' && <CreateTeam onNext={go('leaderboard')} onBack={back} />}
-      {route === 'viewTeam' && <ViewTeam onBack={back} />}
-      {route === 'joinContest' && <JoinContest onSelect={go('leaderboard')} onBack={back} />}
-      {route === 'leaderboard' && <Leaderboard onNext={go('rewards')} onBack={back} />}
-      {route === 'top10' && <Top10 onBack={back} />}
+      {route === 'createTeam' && (
+        <CreateTeam
+          onNext={go('leaderboard')}
+          onBack={back}
+        />
+      )}
 
+      {route === 'viewTeam' && <ViewTeam onBack={back} />}
+
+      {route === 'joinContest' && (
+        <JoinContest
+          onSelect={go('leaderboard')}
+          onBack={back}
+        />
+      )}
+
+      {route === 'leaderboard' && (
+        <Leaderboard
+          onNext={go('rewards')}
+          onBack={back}
+        />
+      )}
+
+      {route === 'top10' && <Top10 onBack={back} />}
       {route === 'howToPlay' && <HowToPlay onBack={back} />}
       {route === 'about' && <AboutUs onBack={back} />}
       {route === 'contact' && <ContactUs onBack={back} />}
     </AppProvider>
-  )
+  );
 }

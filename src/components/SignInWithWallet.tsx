@@ -1,91 +1,124 @@
 // src/components/SignInWithWallet.tsx
-import React from 'react';
-import { API_BASE } from '../api'; // <<— FIX: go up one level
+import React, { useState } from "react";
+import {
+  useWallet,
+  useConnection,
+} from "@solana/wallet-adapter-react";
+import { sign } from "@noble/ed25519";
+import { PublicKey } from "@solana/web3.js";
 
-export default function SignInWithWallet({ onSignedIn }: { onSignedIn?: () => void }) {
-  const [busy, setBusy] = React.useState(false);
-  const [err, setErr] = React.useState<string | null>(null);
+type Props = {
+  onConnected?: (address: string) => void;
+};
 
-  const doSign = async () => {
-    setBusy(true); setErr(null);
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:3300";
+
+export default function SignInWithWallet({ onConnected }: Props) {
+  const { publicKey, signMessage, connect, connected } = useWallet();
+  const { connection } = useConnection();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // ---- Fetch nonce from backend ----
+  async function getNonce(address: string): Promise<string> {
+    const res = await fetch(`${API_BASE}/auth/nonce?address=${address}`);
+    if (!res.ok) throw new Error(`Nonce fetch failed: ${res.statusText}`);
+    const data = await res.json();
+    return data?.nonce || data?.value || "";
+  }
+
+  // ---- Verify signature with backend ----
+  async function verifyWallet(address: string, signature: Uint8Array, message: string) {
+    const res = await fetch(`${API_BASE}/auth/verify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        address,
+        signature: Array.from(signature),
+        message,
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Verification failed: ${err}`);
+    }
+
+    const data = await res.json();
+    if (!data?.token) throw new Error("No token received");
+
+    localStorage.setItem("auth_token", data.token);
+    return data;
+  }
+
+  // ---- Main connect handler ----
+  const connectWallet = async () => {
+    setError(null);
+    setLoading(true);
     try {
-      const provider: any = (window as any).solana ?? (window as any).phantom?.solana;
-      if (!provider?.isPhantom) throw new Error('Phantom not detected');
+      // 1️⃣ Ensure wallet is connected
+      if (!connected) await connect();
+      if (!publicKey) throw new Error("Wallet not connected");
 
-      const connectWithTimeout = (ms: number) =>
-        Promise.race([
-          provider.connect({ onlyIfTrusted: false }),
-          new Promise((_, rej) => setTimeout(() => rej(new Error('Popup timed out')), ms)),
-        ]);
-      const { publicKey } = await connectWithTimeout(20000);
-      const address = publicKey.toString();
+      const address = publicKey.toBase58();
 
-      const nonceRes = await fetch(`${API_BASE}/auth/nonce?address=${encodeURIComponent(address)}`, { credentials: 'include' });
-      if (!nonceRes.ok) throw new Error('Failed to get nonce');
-      const { nonce } = await nonceRes.json();
+      // 2️⃣ Get nonce message
+      const nonce = await getNonce(address);
+      if (!nonce) throw new Error("Failed to get nonce");
 
-      if (!provider.signMessage) throw new Error('Wallet cannot sign messages');
-      const { signature } = await provider.signMessage(new TextEncoder().encode(nonce), 'utf8');
-      const sigB64 = btoa(String.fromCharCode(...Array.from(signature as Uint8Array)));
+      const message = new TextEncoder().encode(`Sign this message to verify: ${nonce}`);
 
-      const verifyRes = await fetch(`${API_BASE}/auth/verify`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ address, nonce, signatureBase64: sigB64 }),
-      });
-      const verifyTxt = await verifyRes.text();
-      if (!verifyRes.ok) throw new Error(verifyTxt);
-      const { token } = JSON.parse(verifyTxt);
+      // 3️⃣ Sign message
+      if (!signMessage) throw new Error("Wallet does not support message signing");
+      const signature = await signMessage(message);
 
-      localStorage.setItem('auth_token', token);
-      onSignedIn?.();
+      // 4️⃣ Verify on backend
+      const verified = await verifyWallet(address, signature, `Sign this message to verify: ${nonce}`);
+      console.log("✅ Wallet verified:", address);
+
+      // 5️⃣ Save wallet + navigate
+      localStorage.setItem("sol_wallet", address);
+      onConnected?.(address);
     } catch (e: any) {
-      setErr(String(e?.message || e));
+      console.error("⚠️ Wallet connect error:", e);
+      setError(e.message || "Wallet connection failed");
     } finally {
-      setBusy(false);
+      setLoading(false);
     }
   };
 
   return (
-    <div className="signin-wrap">
-      <style>{css}</style>
-      <div className="card">
-        <div className="logo">FST</div>
-        <h1>Sign in to FST</h1>
-        <p className="sub">Connect your Phantom wallet to continue.</p>
+    <div style={{ display: "grid", gap: 10 }}>
+      <button
+        className="cta"
+        onClick={connectWallet}
+        disabled={loading}
+        style={{
+          padding: "12px 20px",
+          fontSize: 16,
+          borderRadius: 12,
+          cursor: "pointer",
+          background: "#512da8",
+          color: "white",
+          fontWeight: 600,
+        }}
+      >
+        {loading ? "Connecting..." : "Connect Wallet"}
+      </button>
 
-        <button className="btn" onClick={doSign} disabled={busy}>
-          {busy ? 'Signing…' : 'Sign in with Phantom'}
-        </button>
-
-        {err && <div className="alert">{err}</div>}
-
-        <div className="muted">Make sure Phantom is set to <b>Mainnet</b>.</div>
-      </div>
-      <div className="bg" />
+      {error && (
+        <div
+          style={{
+            color: "red",
+            fontSize: 14,
+            background: "rgba(255,0,0,0.1)",
+            padding: 6,
+            borderRadius: 6,
+          }}
+        >
+          {error}
+        </div>
+      )}
     </div>
   );
 }
-
-const css = String.raw`
-.signin-wrap { min-height:100dvh; display:grid; place-items:center; position:relative; overflow:hidden; }
-.bg { position:absolute; inset:-20%; background:
-  radial-gradient(60% 40% at 20% 10%, rgba(99,102,241,.25), transparent 60%),
-  radial-gradient(50% 40% at 80% 20%, rgba(236,72,153,.25), transparent 60%),
-  radial-gradient(40% 30% at 40% 80%, rgba(16,185,129,.25), transparent 60%);
-  filter: blur(80px);
-}
-.card { position:relative; z-index:1; width: min(92vw, 460px);
-  background:#fff; border:1px solid #eef1f6; border-radius: 16px; padding: 28px;
-  box-shadow: 0 10px 50px rgba(0,0,0,.08);
-  text-align:center;
-}
-.logo { width:56px; height:56px; border-radius:14px; margin: 0 auto 12px; display:grid; place-items:center;
-  background: linear-gradient(135deg, #6366f1, #ec4899); color:#fff; font-weight:900; letter-spacing:.5px; }
-h1 { margin: 6px 0 4px; font-size: 22px; font-weight: 900; }
-.sub { margin: 0 0 16px; opacity:.75; }
-.btn { appearance:none; border:none; background:#111827; color:#fff; padding:12px 14px; border-radius: 12px; cursor:pointer; font-weight:800; width:100%; }
-.alert { border:1px solid #fecaca; background:#fff1f2; color:#991b1b; border-radius: 10px; padding: 10px; margin: 12px 0 0; }
-.muted { margin-top:10px; opacity:.7; font-size: 12px; }
-`;

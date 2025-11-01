@@ -1,4 +1,5 @@
 // src/pages_ConnectWallet.tsx
+import React from "react";
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 type Props = {
@@ -29,7 +30,7 @@ type WalletId = 'phantom' | 'backpack' | 'solflare' | 'exodus' | 'other'
 type WalletItem = {
   id: WalletId
   name: string
-  icon: JSX.Element
+  icon: React.ReactNode
   installed: boolean
   connect: (opts?: any) => Promise<{ address: string; provider?: any }>
   installUrl?: string
