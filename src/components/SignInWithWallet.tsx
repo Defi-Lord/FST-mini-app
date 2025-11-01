@@ -4,17 +4,16 @@ import {
   useWallet,
   useConnection,
 } from "@solana/wallet-adapter-react";
-import { sign } from "@noble/ed25519";
-import { PublicKey } from "@solana/web3.js";
 
 type Props = {
   onConnected?: (address: string) => void;
 };
 
+// Adjust based on your backend endpoint
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:3300";
 
 export default function SignInWithWallet({ onConnected }: Props) {
-  const { publicKey, signMessage, connect, connected } = useWallet();
+  const { publicKey, signMessage, connect, connected, wallet } = useWallet();
   const { connection } = useConnection();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,6 +31,7 @@ export default function SignInWithWallet({ onConnected }: Props) {
     const res = await fetch(`${API_BASE}/auth/verify`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({
         address,
         signature: Array.from(signature),
@@ -55,33 +55,50 @@ export default function SignInWithWallet({ onConnected }: Props) {
   const connectWallet = async () => {
     setError(null);
     setLoading(true);
-    try {
-      // 1️⃣ Ensure wallet is connected
-      if (!connected) await connect();
-      if (!publicKey) throw new Error("Wallet not connected");
 
+    try {
+      // 1️⃣ Check wallet selection
+      if (!wallet) {
+        alert("Please select a wallet first (e.g., Phantom).");
+        throw new Error("Wallet not selected");
+      }
+
+      // 2️⃣ Connect to wallet
+      if (!connected) {
+        await connect();
+      }
+
+      if (!publicKey) throw new Error("Wallet not connected properly");
       const address = publicKey.toBase58();
 
-      // 2️⃣ Get nonce message
+      // 3️⃣ Request nonce from backend
       const nonce = await getNonce(address);
-      if (!nonce) throw new Error("Failed to get nonce");
+      if (!nonce) throw new Error("Failed to get nonce from backend");
 
-      const message = new TextEncoder().encode(`Sign this message to verify: ${nonce}`);
+      const messageStr = `Sign this message to verify: ${nonce}`;
+      const message = new TextEncoder().encode(messageStr);
 
-      // 3️⃣ Sign message
+      // 4️⃣ Sign the message
       if (!signMessage) throw new Error("Wallet does not support message signing");
       const signature = await signMessage(message);
 
-      // 4️⃣ Verify on backend
-      const verified = await verifyWallet(address, signature, `Sign this message to verify: ${nonce}`);
+      // 5️⃣ Verify on backend
+      const verified = await verifyWallet(address, signature, messageStr);
       console.log("✅ Wallet verified:", address);
 
-      // 5️⃣ Save wallet + navigate
+      // 6️⃣ Store wallet + navigate
       localStorage.setItem("sol_wallet", address);
       onConnected?.(address);
     } catch (e: any) {
       console.error("⚠️ Wallet connect error:", e);
-      setError(e.message || "Wallet connection failed");
+
+      if (e.name === "WalletNotSelectedError") {
+        setError("No wallet selected. Please open Phantom or another wallet extension.");
+      } else if (e.message.includes("User denied")) {
+        setError("You denied the signature request. Please approve it in your wallet popup.");
+      } else {
+        setError(e.message || "Wallet connection failed");
+      }
     } finally {
       setLoading(false);
     }
