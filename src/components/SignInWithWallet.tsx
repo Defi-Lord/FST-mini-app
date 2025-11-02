@@ -1,7 +1,8 @@
 // src/components/SignInWithWallet.tsx
 import React, { useState, useEffect } from "react";
-import { useWallet, useConnection, WalletName } from "@solana/wallet-adapter-react";
+import { useWallet, useConnection } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
+import { WalletName } from "@solana/wallet-adapter-base";
 import { PublicKey } from "@solana/web3.js";
 
 type Props = {
@@ -20,7 +21,9 @@ export default function SignInWithWallet({ onConnected }: Props) {
   // Automatically pick Phantom or Solflare if none selected
   useEffect(() => {
     try {
-      const preferred = (localStorage.getItem("preferred_wallet") as WalletName) || ("Phantom" as WalletName);
+      const preferred =
+        (localStorage.getItem("preferred_wallet") as WalletName) ||
+        ("Phantom" as WalletName);
       select?.(preferred);
     } catch (e) {
       console.warn("Wallet auto-select skipped:", e);
@@ -34,7 +37,11 @@ export default function SignInWithWallet({ onConnected }: Props) {
     return data?.nonce || data?.value || "";
   }
 
-  async function verifyWallet(address: string, signature: Uint8Array, message: string) {
+  async function verifyWallet(
+    address: string,
+    signature: Uint8Array,
+    message: string
+  ) {
     const res = await fetch(`${API_BASE}/auth/verify`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -53,13 +60,13 @@ export default function SignInWithWallet({ onConnected }: Props) {
     setError(null);
     setLoading(true);
     try {
-      // 1️⃣ If no wallet is selected, open the modal
+      // 1️⃣ Open modal if wallet not selected
       if (!publicKey && !connected) {
         setVisible(true);
         return;
       }
 
-      // 2️⃣ Connect
+      // 2️⃣ Connect to wallet
       if (!connected) await connect();
       if (!publicKey) throw new Error("Wallet not connected");
 
@@ -67,7 +74,9 @@ export default function SignInWithWallet({ onConnected }: Props) {
 
       // 3️⃣ Get nonce and sign
       const nonce = await getNonce(address);
-      const message = new TextEncoder().encode(`Sign this message to verify: ${nonce}`);
+      const message = new TextEncoder().encode(
+        `Sign this message to verify: ${nonce}`
+      );
       if (!signMessage) throw new Error("Wallet does not support message signing");
       const signature = await signMessage(message);
 
