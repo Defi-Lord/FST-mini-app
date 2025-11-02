@@ -66,7 +66,8 @@ type Route =
   | "profile";
 
 // ---------- CONFIG ----------
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:3300";
+const API_BASE =
+  import.meta.env.VITE_API_BASE || "https://fst-backend-z7bc.onrender.com"; // ✅ Updated default URL
 const SOLANA_RPC =
   import.meta.env.VITE_SOLANA_RPC || "https://api.devnet.solana.com";
 
@@ -297,10 +298,7 @@ function AppInner() {
 
 // ---------- ROOT RENDER ----------
 const endpoint = SOLANA_RPC;
-const wallets = [
-  new PhantomWalletAdapter(),
-  new SolflareWalletAdapter(),
-];
+const wallets = [new PhantomWalletAdapter(), new SolflareWalletAdapter()];
 
 const root = createRoot(document.getElementById("root")!);
 
