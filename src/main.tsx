@@ -183,7 +183,9 @@ function AppInner() {
           if (effectiveAddr) handleConnected(effectiveAddr);
           setAuthed(true);
         }
-      } catch {}
+      } catch (err) {
+        console.warn("Auth check failed:", err);
+      }
 
       try {
         const r = await fetch(`${API_BASE}/auth/introspect`, {
@@ -295,7 +297,10 @@ function AppInner() {
 
 // ---------- ROOT RENDER ----------
 const endpoint = SOLANA_RPC;
-const wallets = [new PhantomWalletAdapter(), new SolflareWalletAdapter()];
+const wallets = [
+  new PhantomWalletAdapter(),
+  new SolflareWalletAdapter(),
+];
 
 const root = createRoot(document.getElementById("root")!);
 
