@@ -1,24 +1,31 @@
 // src/components/SignInWithWallet.tsx
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   useWallet,
   useConnection,
-} from "@solana/wallet-adapter-react";
+  useWalletModal
+} from "@solana/wallet-adapter-react-ui";
+import { PublicKey } from "@solana/web3.js";
 
 type Props = {
   onConnected?: (address: string) => void;
 };
 
-// Adjust based on your backend endpoint
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:3300";
 
 export default function SignInWithWallet({ onConnected }: Props) {
-  const { publicKey, signMessage, connect, connected, wallet } = useWallet();
-  const { connection } = useConnection();
+  const { publicKey, signMessage, connect, connected, select } = useWallet();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // ---- Fetch nonce from backend ----
+  // Automatically pick Phantom or Solflare as default wallet
+  useEffect(() => {
+    try {
+      const preferred = localStorage.getItem("preferred_wallet") || "Phantom";
+      select?.(preferred);
+    } catch {}
+  }, [select]);
+
   async function getNonce(address: string): Promise<string> {
     const res = await fetch(`${API_BASE}/auth/nonce?address=${address}`);
     if (!res.ok) throw new Error(`Nonce fetch failed: ${res.statusText}`);
@@ -26,24 +33,14 @@ export default function SignInWithWallet({ onConnected }: Props) {
     return data?.nonce || data?.value || "";
   }
 
-  // ---- Verify signature with backend ----
   async function verifyWallet(address: string, signature: Uint8Array, message: string) {
     const res = await fetch(`${API_BASE}/auth/verify`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({
-        address,
-        signature: Array.from(signature),
-        message,
-      }),
+      body: JSON.stringify({ address, signature: Array.from(signature), message }),
     });
 
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`Verification failed: ${err}`);
-    }
-
+    if (!res.ok) throw new Error(`Verification failed: ${await res.text()}`);
     const data = await res.json();
     if (!data?.token) throw new Error("No token received");
 
@@ -51,54 +48,33 @@ export default function SignInWithWallet({ onConnected }: Props) {
     return data;
   }
 
-  // ---- Main connect handler ----
   const connectWallet = async () => {
     setError(null);
     setLoading(true);
-
     try {
-      // 1️⃣ Check wallet selection
-      if (!wallet) {
-        alert("Please select a wallet first (e.g., Phantom).");
-        throw new Error("Wallet not selected");
-      }
-
-      // 2️⃣ Connect to wallet
+      // 1️⃣ Ensure wallet is connected
       if (!connected) {
         await connect();
       }
+      if (!publicKey) throw new Error("Wallet not connected");
 
-      if (!publicKey) throw new Error("Wallet not connected properly");
       const address = publicKey.toBase58();
 
-      // 3️⃣ Request nonce from backend
+      // 2️⃣ Get nonce and sign
       const nonce = await getNonce(address);
-      if (!nonce) throw new Error("Failed to get nonce from backend");
-
-      const messageStr = `Sign this message to verify: ${nonce}`;
-      const message = new TextEncoder().encode(messageStr);
-
-      // 4️⃣ Sign the message
+      const message = new TextEncoder().encode(`Sign this message to verify: ${nonce}`);
       if (!signMessage) throw new Error("Wallet does not support message signing");
       const signature = await signMessage(message);
 
-      // 5️⃣ Verify on backend
-      const verified = await verifyWallet(address, signature, messageStr);
+      // 3️⃣ Verify on backend
+      await verifyWallet(address, signature, `Sign this message to verify: ${nonce}`);
       console.log("✅ Wallet verified:", address);
 
-      // 6️⃣ Store wallet + navigate
       localStorage.setItem("sol_wallet", address);
       onConnected?.(address);
     } catch (e: any) {
       console.error("⚠️ Wallet connect error:", e);
-
-      if (e.name === "WalletNotSelectedError") {
-        setError("No wallet selected. Please open Phantom or another wallet extension.");
-      } else if (e.message.includes("User denied")) {
-        setError("You denied the signature request. Please approve it in your wallet popup.");
-      } else {
-        setError(e.message || "Wallet connection failed");
-      }
+      setError(e.message || "Wallet connection failed");
     } finally {
       setLoading(false);
     }
@@ -107,7 +83,6 @@ export default function SignInWithWallet({ onConnected }: Props) {
   return (
     <div style={{ display: "grid", gap: 10 }}>
       <button
-        className="cta"
         onClick={connectWallet}
         disabled={loading}
         style={{
