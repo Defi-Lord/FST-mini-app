@@ -1,10 +1,7 @@
 // src/components/SignInWithWallet.tsx
 import React, { useState, useEffect } from "react";
-import {
-  useWallet,
-  useConnection,
-  useWalletModal
-} from "@solana/wallet-adapter-react-ui";
+import { useWallet, useConnection } from "@solana/wallet-adapter-react";
+import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { PublicKey } from "@solana/web3.js";
 
 type Props = {
@@ -15,10 +12,12 @@ const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:3300";
 
 export default function SignInWithWallet({ onConnected }: Props) {
   const { publicKey, signMessage, connect, connected, select } = useWallet();
+  const { connection } = useConnection();
+  const { setVisible } = useWalletModal(); // controls wallet modal
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Automatically pick Phantom or Solflare as default wallet
+  // Automatically select Phantom or Solflare if none chosen
   useEffect(() => {
     try {
       const preferred = localStorage.getItem("preferred_wallet") || "Phantom";
@@ -52,10 +51,13 @@ export default function SignInWithWallet({ onConnected }: Props) {
     setError(null);
     setLoading(true);
     try {
-      // 1️⃣ Ensure wallet is connected
-      if (!connected) {
-        await connect();
+      // 1️⃣ If no wallet is selected, open modal automatically
+      if (!publicKey && !connected) {
+        setVisible(true); // opens the wallet selector popup
+        return;
       }
+
+      if (!connected) await connect();
       if (!publicKey) throw new Error("Wallet not connected");
 
       const address = publicKey.toBase58();
