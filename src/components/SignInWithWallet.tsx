@@ -1,130 +1,87 @@
 // src/components/SignInWithWallet.tsx
-import React, { useState, useEffect } from "react";
-import { useWallet, useConnection } from "@solana/wallet-adapter-react";
-import { useWalletModal } from "@solana/wallet-adapter-react-ui";
-import { WalletName } from "@solana/wallet-adapter-base";
-import { PublicKey } from "@solana/web3.js";
+import React, { useState } from "react";
+import { useWallet } from "@solana/wallet-adapter-react";
+import bs58 from "bs58";
 
-type Props = {
-  onConnected?: (address: string) => void;
-};
+const API_BASE = import.meta.env.VITE_API_BASE || "https://fst-backend-z7bc.onrender.com";
 
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:3300";
+interface Props {
+  onConnected: (address: string) => void;
+}
 
-export default function SignInWithWallet({ onConnected }: Props) {
-  const { publicKey, signMessage, connect, connected, select } = useWallet();
-  const { connection } = useConnection();
-  const { setVisible } = useWalletModal();
+const SignInWithWallet: React.FC<Props> = ({ onConnected }) => {
+  const { publicKey, signMessage, connect, connected } = useWallet();
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState("");
 
-  // Automatically pick Phantom or Solflare if none selected
-  useEffect(() => {
-    try {
-      const preferred =
-        (localStorage.getItem("preferred_wallet") as WalletName) ||
-        ("Phantom" as WalletName);
-      select?.(preferred);
-    } catch (e) {
-      console.warn("Wallet auto-select skipped:", e);
-    }
-  }, [select]);
-
-  async function getNonce(address: string): Promise<string> {
-    const res = await fetch(`${API_BASE}/auth/nonce?address=${address}`);
-    if (!res.ok) throw new Error(`Nonce fetch failed: ${res.statusText}`);
-    const data = await res.json();
-    return data?.nonce || data?.value || "";
-  }
-
-  async function verifyWallet(
-    address: string,
-    signature: Uint8Array,
-    message: string
-  ) {
-    const res = await fetch(`${API_BASE}/auth/verify`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ address, signature: Array.from(signature), message }),
-    });
-
-    if (!res.ok) throw new Error(`Verification failed: ${await res.text()}`);
-    const data = await res.json();
-    if (!data?.token) throw new Error("No token received");
-
-    localStorage.setItem("auth_token", data.token);
-    return data;
-  }
-
-  const connectWallet = async () => {
-    setError(null);
+  const handleConnect = async () => {
+    setError("");
     setLoading(true);
     try {
-      // 1️⃣ Open modal if wallet not selected
-      if (!publicKey && !connected) {
-        setVisible(true);
-        return;
-      }
-
-      // 2️⃣ Connect to wallet
       if (!connected) await connect();
-      if (!publicKey) throw new Error("Wallet not connected");
+      if (!publicKey) throw new Error("Wallet not found");
 
       const address = publicKey.toBase58();
+      console.log("🔑 Wallet address:", address);
 
-      // 3️⃣ Get nonce and sign
-      const nonce = await getNonce(address);
-      const message = new TextEncoder().encode(
-        `Sign this message to verify: ${nonce}`
-      );
-      if (!signMessage) throw new Error("Wallet does not support message signing");
-      const signature = await signMessage(message);
+      // Step 1: Fetch nonce
+      const nonceRes = await fetch(`${API_BASE}/auth/nonce?address=${address}`);
+      if (!nonceRes.ok) throw new Error("Failed to get nonce");
+      const { nonce } = await nonceRes.json();
 
-      // 4️⃣ Verify on backend
-      await verifyWallet(address, signature, `Sign this message to verify: ${nonce}`);
-      console.log("✅ Wallet verified:", address);
+      const message = `Please sign this message to verify your wallet.\nNonce: ${nonce}`;
 
-      localStorage.setItem("sol_wallet", address);
-      onConnected?.(address);
-    } catch (e: any) {
-      console.error("⚠️ Wallet connect error:", e);
-      setError(e.message || "Wallet connection failed");
+      // Step 2: Sign message
+      const encodedMessage = new TextEncoder().encode(message);
+      const signature = await signMessage(encodedMessage);
+      const signatureArray = Array.from(signature);
+
+      // Step 3: Verify
+      const verifyRes = await fetch(`${API_BASE}/auth/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          address,
+          signature: signatureArray,
+          message,
+        }),
+      });
+
+      if (!verifyRes.ok) throw new Error("Wallet verification failed");
+      const data = await verifyRes.json();
+
+      localStorage.setItem("auth_token", data.token);
+      onConnected(address);
+
+      console.log("✅ Wallet verified successfully:", address);
+    } catch (err: any) {
+      console.error("❌ Wallet connection failed:", err);
+      setError(err.message || "Failed to connect wallet");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div style={{ display: "grid", gap: 10 }}>
+    <div style={{ display: "grid", gap: 12 }}>
       <button
-        onClick={connectWallet}
         disabled={loading}
+        onClick={handleConnect}
         style={{
-          padding: "12px 20px",
-          fontSize: 16,
-          borderRadius: 12,
-          cursor: "pointer",
           background: "#512da8",
           color: "white",
+          padding: "10px 16px",
+          border: "none",
+          borderRadius: "8px",
+          cursor: "pointer",
           fontWeight: 600,
         }}
       >
         {loading ? "Connecting..." : "Connect Wallet"}
       </button>
-
-      {error && (
-        <div
-          style={{
-            color: "red",
-            fontSize: 14,
-            background: "rgba(255,0,0,0.1)",
-            padding: 6,
-            borderRadius: 6,
-          }}
-        >
-          {error}
-        </div>
-      )}
+      {error && <small style={{ color: "red" }}>{error}</small>}
     </div>
   );
-}
+};
+
+export default SignInWithWallet;
