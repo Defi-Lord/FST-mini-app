@@ -103,6 +103,7 @@ export function adminHealth() {
   return api.get<{ ok: true; admin: true }>('/admin/healthz');
 }
 
+/** Contest Type (extended with startAt/endAt) */
 export type Contest = {
   id: string;
   title: string;
@@ -110,6 +111,8 @@ export type Contest = {
   entryFee: number;
   active: boolean;
   createdAt: string;
+  startAt?: string; // ✅ optional ISO datetime for registration start
+  endAt?: string;   // ✅ optional ISO datetime for registration end
 };
 
 export function listContests() {
@@ -121,6 +124,8 @@ export function createContest(input: {
   realm: Contest['realm'];
   entryFee: number;
   active?: boolean;
+  startAt?: string;
+  endAt?: string;
 }) {
   return api.post<{ ok: true; contest: Contest }>('/admin/contests', input);
 }
@@ -225,10 +230,10 @@ export function joinContest(contestId: string, team?: any) {
 export function startPaidJoin(contestId: string) {
   return api.post<{
     ok: true;
-    to: string;               // treasury address
-    amountLamports: number;   // lamports to send (>= MIN_LAMPORTS_FOR_5USD)
-    memo: string;             // optional memo to include
-    from: string;             // your wallet (server echoes it)
+    to: string;
+    amountLamports: number;
+    memo: string;
+    from: string;
   }>(`/contests/${encodeURIComponent(contestId)}/join/start`);
 }
 
@@ -241,10 +246,8 @@ export function verifyPaidJoin(contestId: string, signature: string) {
 }
 
 /* ==========================================================
-   History (per-user, per-contest) — rounds & points
+   History (per-user, per-contest)
    ========================================================== */
-
-/** Returns this user's round-by-round scores for a contest */
 export function getMyHistory(contestId: string) {
   return api.get<{
     ok: true;
@@ -254,7 +257,7 @@ export function getMyHistory(contestId: string) {
 }
 
 /* ==========================================================
-   FPL proxies (used by your HomeHub)
+   FPL proxies
    ========================================================== */
 export function fetchBootstrap() {
   return api.get<any>('/fpl/api/bootstrap-static/');
