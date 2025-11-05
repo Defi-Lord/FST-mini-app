@@ -67,25 +67,20 @@ type Route =
 
 // ---------- CONFIG ----------
 const API_BASE =
-  import.meta.env.VITE_API_BASE || "https://fst-backend-z7bc.onrender.com"; // ✅ Updated default URL
+  import.meta.env.VITE_API_BASE || "https://fst-backend-z7bc.onrender.com";
 const SOLANA_RPC =
   import.meta.env.VITE_SOLANA_RPC || "https://api.devnet.solana.com";
 
-const getToken = () => {
-  try {
-    return localStorage.getItem("auth_token") || "";
-  } catch {
-    return "";
-  }
-};
+const getToken = () => localStorage.getItem("fst_token") || "";
+const setToken = (token: string) => localStorage.setItem("fst_token", token);
 
-// ---------- MAIN APP INNER ----------
+// ---------- MAIN ----------
 function AppInner() {
   const [route, setRoute] = useState<Route>("landing");
   const stackRef = useRef<Route[]>(["landing"]);
   const { setRealm, setWalletAddress } = useApp();
   const wallet = useWallet();
-  const [authed, setAuthed] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
 
   // Telegram helpers
@@ -154,52 +149,57 @@ function AppInner() {
     }
   };
 
+  // Restore session
+  useEffect(() => {
+    (async () => {
+      const token = getToken();
+      if (!token) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const resp = await fetch(`${API_BASE}/auth/introspect`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token }),
+        });
+        const j = await resp.json();
+        const role = String(j?.payload?.role || "").toUpperCase();
+        setIsAdmin(role === "ADMIN");
+        if (role === "ADMIN") go("admin");
+        else go("home");
+      } catch (err) {
+        console.warn("Auth restore failed:", err);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
   // Handle verified wallet
   const handleConnected = (addr: string) => {
-    try {
-      localStorage.setItem("sol_wallet", addr);
-    } catch {}
     setWalletAddress(addr);
+    localStorage.setItem("sol_wallet", addr);
     setRealm("free");
     go("home");
   };
 
-  // Auth + auto connect
+  // Wallet + token recheck
   useEffect(() => {
     (async () => {
-      setAuthed(false);
-      setIsAdmin(false);
-      const addr = wallet?.publicKey?.toBase58() || "";
       const token = getToken();
-      if (!token) return;
-
-      try {
-        const me = await fetch(`${API_BASE}/me`, {
-          headers: { Authorization: `Bearer ${token}` },
-          credentials: "include",
-        });
-        if (me.ok) {
-          const j = await me.json().catch(() => null);
-          const effectiveAddr = j?.user?.id || addr || "";
-          if (effectiveAddr) handleConnected(effectiveAddr);
-          setAuthed(true);
-        }
-      } catch (err) {
-        console.warn("Auth check failed:", err);
-      }
-
+      if (!wallet.connected || !token) return;
       try {
         const r = await fetch(`${API_BASE}/auth/introspect`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ token }),
-          credentials: "include",
         });
-        if (r.ok) {
-          const j = await r.json();
-          setIsAdmin(String(j?.payload?.role || "").toUpperCase() === "ADMIN");
-        } else setIsAdmin(false);
-      } catch {
+        const j = await r.json();
+        const role = String(j?.payload?.role || "").toUpperCase();
+        setIsAdmin(role === "ADMIN");
+      } catch (e) {
         setIsAdmin(false);
       }
     })();
@@ -209,8 +209,7 @@ function AppInner() {
   const onLaunch = () => {
     const token = getToken();
     if (token) {
-      setRealm("free");
-      go("home");
+      go(isAdmin ? "admin" : "home");
       return;
     }
     go("connect");
@@ -221,12 +220,9 @@ function AppInner() {
     go("teamSelect");
   };
 
-  const handleAdminNav = () => {
-    if (!isAdmin) return alert("Admin only");
-    go("admin");
-  };
+  // ---------- RENDER ----------
+  if (loading) return <div style={{ padding: 40 }}>Loading...</div>;
 
-  // ---------- RENDER ROUTES ----------
   return (
     <>
       {route === "landing" && (
@@ -235,9 +231,13 @@ function AppInner() {
 
       {route === "connect" && (
         <div style={{ display: "grid", gap: 12, padding: 16 }}>
-          <SignInWithWallet onConnected={handleConnected} />
+          <SignInWithWallet
+            onConnected={handleConnected}
+            onToken={(t) => setToken(t)}
+          />
           <small>
-            Tip: If you don’t see the wallet popup, click the Phantom icon in your browser toolbar.
+            Tip: If you don’t see the wallet popup, click the Phantom icon in
+            your browser toolbar.
           </small>
         </div>
       )}
@@ -257,7 +257,7 @@ function AppInner() {
           onAboutUs={() => go("about")}
           onContactUs={() => go("contact")}
           isAdmin={isAdmin}
-          onAdmin={handleAdminNav}
+          onAdmin={() => go("admin")}
           onHistory={() => go("history")}
           onProfile={() => go("profile")}
         />
@@ -296,7 +296,7 @@ function AppInner() {
   );
 }
 
-// ---------- ROOT RENDER ----------
+// ---------- ROOT ----------
 const endpoint = SOLANA_RPC;
 const wallets = [new PhantomWalletAdapter(), new SolflareWalletAdapter()];
 
@@ -316,4 +316,4 @@ root.render(
   </React.StrictMode>
 );
 
-export default true; // ✅ prevents Vite Fast Refresh warnings
+export default true;
