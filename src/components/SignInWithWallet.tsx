@@ -9,6 +9,9 @@ type Props = {
   onToken?: (token: string) => void;
 };
 
+type ChallengeResponse = { ok: boolean; challenge: string };
+type VerifyResponse = { ok: boolean; token: string; role: string };
+
 export default function SignInWithWallet({ onConnected, onToken }: Props) {
   const wallet = useWallet();
   const [loading, setLoading] = useState(false);
@@ -24,30 +27,31 @@ export default function SignInWithWallet({ onConnected, onToken }: Props) {
 
     try {
       // 1️⃣ Request challenge message
-      const challengeRes = await api.post("/auth/challenge", {
+      const challengeRes = await api.post<ChallengeResponse>("/auth/challenge", {
         address: wallet.publicKey.toBase58(),
       });
-      const message = challengeRes.challenge || challengeRes.data?.challenge;
+
+      const message = challengeRes.challenge;
       if (!message) throw new Error("Failed to get challenge");
 
-      // 2️⃣ Sign message
+      // 2️⃣ Sign the challenge
       const encoded = new TextEncoder().encode(message);
       const signature = await wallet.signMessage!(encoded);
 
-      // 3️⃣ Verify signature
-      const verifyRes = await api.post("/auth/verify", {
+      // 3️⃣ Verify + issue token
+      const verifyRes = await api.post<VerifyResponse>("/auth/verify", {
         address: wallet.publicKey.toBase58(),
         signature: Buffer.from(signature).toString("base64"),
         message,
       });
 
-      const token = verifyRes.token || verifyRes.data?.token;
+      const token = verifyRes.token;
       localStorage.setItem("auth_token", token);
       onToken?.(token);
       onConnected(wallet.publicKey.toBase58());
     } catch (err: any) {
       console.error("Sign-in failed:", err);
-      setError(err?.response?.data?.error || err?.message || "Sign-in failed.");
+      setError(err?.message || "Sign-in failed.");
     } finally {
       setLoading(false);
     }
