@@ -1,9 +1,6 @@
 // src/components/SignInWithWallet.tsx
 import React, { useState } from "react";
-import {
-  useWallet,
-  WalletNotSelectedError,
-} from "@solana/wallet-adapter-react";
+import { useWallet } from "@solana/wallet-adapter-react";
 import { motion } from "framer-motion";
 import { api } from "../api";
 
@@ -16,17 +13,19 @@ export default function SignInWithWallet({ onConnected, onToken }: Props) {
   const wallet = useWallet();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
 
   const handleConnect = async () => {
+    setError(null);
     try {
-      setError(null);
       await wallet.connect();
-    } catch (err) {
-      if (err instanceof WalletNotSelectedError) {
+    } catch (err: any) {
+      if (err.name === "WalletNotSelectedError") {
         setError("Please select a wallet to continue.");
       } else {
-        setError("Wallet connection failed. Try again.");
+        setError("Failed to connect wallet. Try again.");
       }
+      console.warn("Wallet connection error:", err);
     }
   };
 
@@ -35,42 +34,39 @@ export default function SignInWithWallet({ onConnected, onToken }: Props) {
       setError("Please connect your wallet first.");
       return;
     }
-
     setLoading(true);
     setError(null);
+    setSuccess(false);
+
     try {
-      // ✅ Step 1: Request challenge
+      // 1️⃣ Get challenge message from backend
       const challengeRes = await api.post<{ ok: boolean; challenge: string }>(
         "/auth/challenge",
         { address: wallet.publicKey.toBase58() }
       );
 
-      if (!challengeRes.ok || !challengeRes.challenge)
-        throw new Error("Invalid challenge response.");
+      const challenge = challengeRes.challenge;
+      if (!challenge) throw new Error("No challenge received from server.");
 
-      const message = challengeRes.challenge;
-      const encodedMessage = new TextEncoder().encode(message);
+      // 2️⃣ Sign challenge
+      const encodedMsg = new TextEncoder().encode(challenge);
+      const signature = await wallet.signMessage!(encodedMsg);
 
-      // ✅ Step 2: Sign challenge
-      const signature = await wallet.signMessage!(encodedMessage);
-
-      // ✅ Step 3: Verify on backend
-      const verifyRes = await api.post<{ ok: boolean; token: string; role: string }>(
+      // 3️⃣ Verify signature with backend
+      const verifyRes = await api.post<{ ok: boolean; token: string }>(
         "/auth/verify",
         {
           address: wallet.publicKey.toBase58(),
           signature: Buffer.from(signature).toString("base64"),
-          message,
+          message: challenge,
         }
       );
-
-      if (!verifyRes.ok || !verifyRes.token)
-        throw new Error("Verification failed.");
 
       const token = verifyRes.token;
       localStorage.setItem("auth_token", token);
       onToken?.(token);
       onConnected(wallet.publicKey.toBase58());
+      setSuccess(true);
     } catch (err: any) {
       console.error("Sign-in failed:", err);
       setError(err?.message || "Sign-in failed. Please try again.");
@@ -80,58 +76,67 @@ export default function SignInWithWallet({ onConnected, onToken }: Props) {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-900 via-purple-800 to-indigo-700 px-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#0b0f19] to-[#1a1f2e] px-4">
       <motion.div
-        className="bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl shadow-xl p-8 w-full max-w-md text-center"
-        initial={{ opacity: 0, y: 20 }}
+        initial={{ opacity: 0, y: 40 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
+        transition={{ duration: 0.5 }}
+        className="w-full max-w-md bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl shadow-xl p-8 text-center"
       >
         <motion.h1
-          className="text-2xl font-bold text-white mb-2"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
+          className="text-2xl font-semibold text-white mb-4"
         >
-          Sign In to Fantasy Street Traders
+          Sign In with Solana Wallet
         </motion.h1>
-        <p className="text-sm text-indigo-100 mb-6">
-          Connect your Solana wallet to continue
+
+        <p className="text-gray-300 text-sm mb-8">
+          Securely authenticate using your Solana wallet. We’ll never request
+          private keys or sensitive info.
         </p>
 
         {!wallet.connected ? (
-          <button
+          <motion.button
+            whileHover={{ scale: 1.03 }}
+            whileTap={{ scale: 0.97 }}
             onClick={handleConnect}
             disabled={loading}
-            className="w-full py-3 bg-gradient-to-r from-purple-500 to-indigo-500 text-white font-semibold rounded-xl hover:opacity-90 transition disabled:opacity-50"
+            className="w-full py-3 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 transition"
           >
             {loading ? "Connecting..." : "Connect Wallet"}
-          </button>
+          </motion.button>
         ) : (
-          <button
+          <motion.button
+            whileHover={{ scale: 1.03 }}
+            whileTap={{ scale: 0.97 }}
             onClick={handleSignIn}
             disabled={loading}
-            className="w-full py-3 bg-gradient-to-r from-green-400 to-emerald-500 text-white font-semibold rounded-xl hover:opacity-90 transition disabled:opacity-50"
+            className="w-full py-3 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 transition"
           >
             {loading ? "Signing In..." : "Sign In with Wallet"}
-          </button>
+          </motion.button>
         )}
 
         {error && (
           <motion.div
-            className="mt-4 text-sm text-red-300 bg-red-900/40 rounded-lg px-3 py-2"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
+            className="text-red-400 text-sm mt-4"
           >
             {error}
           </motion.div>
         )}
 
-        {wallet.connected && (
-          <p className="text-xs text-indigo-200 mt-4">
-            Connected: {wallet.publicKey?.toBase58().slice(0, 6)}...
-            {wallet.publicKey?.toBase58().slice(-4)}
-          </p>
+        {success && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="text-emerald-400 text-sm mt-4"
+          >
+            ✅ Successfully signed in!
+          </motion.div>
         )}
       </motion.div>
     </div>
