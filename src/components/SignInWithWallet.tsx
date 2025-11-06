@@ -19,9 +19,12 @@ export default function SignInWithWallet({ onConnected, onToken }: Props) {
     setError(null);
     try {
       await wallet.connect();
+      if (!wallet.publicKey) {
+        setError("Please select a wallet to continue.");
+      }
     } catch (err: any) {
       if (err.name === "WalletNotSelectedError") {
-        setError("Please select a wallet to continue.");
+        setError("Please choose a wallet (Phantom, Solflare, or Backpack).");
       } else {
         setError("Failed to connect wallet. Try again.");
       }
@@ -39,7 +42,6 @@ export default function SignInWithWallet({ onConnected, onToken }: Props) {
     setSuccess(false);
 
     try {
-      // 1️⃣ Get challenge message from backend
       const challengeRes = await api.post<{ ok: boolean; challenge: string }>(
         "/auth/challenge",
         { address: wallet.publicKey.toBase58() }
@@ -48,12 +50,10 @@ export default function SignInWithWallet({ onConnected, onToken }: Props) {
       const challenge = challengeRes.challenge;
       if (!challenge) throw new Error("No challenge received from server.");
 
-      // 2️⃣ Sign challenge
       const encodedMsg = new TextEncoder().encode(challenge);
       const signature = await wallet.signMessage!(encodedMsg);
 
-      // 3️⃣ Verify signature with backend
-      const verifyRes = await api.post<{ ok: boolean; token: string }>(
+      const verifyRes = await api.post<{ ok: boolean; token: string; role: string }>(
         "/auth/verify",
         {
           address: wallet.publicKey.toBase58(),
@@ -63,7 +63,7 @@ export default function SignInWithWallet({ onConnected, onToken }: Props) {
       );
 
       const token = verifyRes.token;
-      localStorage.setItem("auth_token", token);
+      localStorage.setItem("fst_token", token);
       onToken?.(token);
       onConnected(wallet.publicKey.toBase58());
       setSuccess(true);
@@ -76,25 +76,24 @@ export default function SignInWithWallet({ onConnected, onToken }: Props) {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#0b0f19] to-[#1a1f2e] px-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#0b0f19] via-[#14182b] to-[#1a1f2e] px-4">
       <motion.div
         initial={{ opacity: 0, y: 40 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="w-full max-w-md bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl shadow-xl p-8 text-center"
+        className="w-full max-w-md bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl shadow-2xl p-8 text-center"
       >
         <motion.h1
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="text-2xl font-semibold text-white mb-4"
+          className="text-3xl font-semibold text-white mb-4"
         >
-          Sign In with Solana Wallet
+          Connect Your Wallet
         </motion.h1>
 
         <p className="text-gray-300 text-sm mb-8">
-          Securely authenticate using your Solana wallet. We’ll never request
-          private keys or sensitive info.
+          Sign in securely with your Solana wallet to access FST.
         </p>
 
         {!wallet.connected ? (
@@ -115,7 +114,7 @@ export default function SignInWithWallet({ onConnected, onToken }: Props) {
             disabled={loading}
             className="w-full py-3 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 transition"
           >
-            {loading ? "Signing In..." : "Sign In with Wallet"}
+            {loading ? "Signing In..." : "Sign In"}
           </motion.button>
         )}
 
