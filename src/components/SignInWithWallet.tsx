@@ -1,6 +1,6 @@
 // src/components/SignInWithWallet.tsx
 import React, { useState } from "react";
-import { useWallet } from "@solana/wallet-adapter-react";
+import { useWallet, WalletNotConnectedError } from "@solana/wallet-adapter-react";
 import { motion } from "framer-motion";
 import { api } from "../api";
 
@@ -14,37 +14,39 @@ export default function SignInWithWallet({ onConnected, onToken }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const handleConnect = async () => {
+    try {
+      setError(null);
+      if (!wallet.wallet) {
+        setError("Please select a wallet (e.g., Phantom, Solflare).");
+        return;
+      }
+      await wallet.connect();
+    } catch (err: any) {
+      console.error("Wallet connect error:", err);
+      setError("Wallet connection canceled or failed.");
+    }
+  };
+
   const handleSignIn = async () => {
     try {
-      if (!wallet.wallet) {
-        setError("Please select a wallet first.");
-        await wallet.connect(); // triggers wallet modal
-        return;
-      }
-
-      if (!wallet.connected) {
-        await wallet.connect();
-      }
-
-      if (!wallet.publicKey) {
-        setError("Wallet not connected.");
-        return;
-      }
+      if (!wallet.publicKey) throw new WalletNotConnectedError();
 
       setLoading(true);
       setError(null);
 
-      // Step 1: Get challenge
+      // Step 1: Request challenge
       const res = await api.post<{ ok: true; challenge: string }>(
         "/auth/challenge",
         { address: wallet.publicKey.toBase58() }
       );
 
+      // Step 2: Sign the message
       const encodedMessage = new TextEncoder().encode(res.challenge);
       const signature = await wallet.signMessage!(encodedMessage);
 
-      // Step 2: Verify + get JWT
-      const verify = await api.post<{ ok: true; token: string }>(
+      // Step 3: Verify and get token
+      const verify = await api.post<{ ok: true; token: string; role: string }>(
         "/auth/verify",
         {
           address: wallet.publicKey.toBase58(),
@@ -59,7 +61,11 @@ export default function SignInWithWallet({ onConnected, onToken }: Props) {
       onConnected(wallet.publicKey.toBase58());
     } catch (err: any) {
       console.error("❌ Sign-in failed:", err);
-      setError(err?.message || "Sign-in failed. Try again.");
+      if (err.name === "WalletNotConnectedError") {
+        setError("Please connect your wallet first.");
+      } else {
+        setError(err?.message || "Sign-in failed. Try again.");
+      }
     } finally {
       setLoading(false);
     }
@@ -79,18 +85,18 @@ export default function SignInWithWallet({ onConnected, onToken }: Props) {
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.2 }}
         >
-          🔐 Sign In with Wallet
+          ⚡ Sign In with Wallet
         </motion.h1>
 
         <p className="text-gray-300 text-sm mb-8">
-          Connect your Solana wallet securely to continue.
+          Securely connect your Solana wallet to access your dashboard.
         </p>
 
         {!wallet.connected ? (
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.97 }}
-            onClick={() => wallet.connect()}
+            onClick={handleConnect}
             disabled={loading}
             className="w-full py-3 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-semibold shadow-lg hover:shadow-indigo-700/40 transition-all"
           >
