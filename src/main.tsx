@@ -28,20 +28,11 @@ import Transfers from "./pages_Transfers";
 import Profile from "./pages_Profile";
 import "./styles/menu-drawer.css";
 
-// --- Wallet setup ---
-import {
-  ConnectionProvider,
-  WalletProvider,
-  useWallet,
-} from "@solana/wallet-adapter-react";
-import {
-  PhantomWalletAdapter,
-  SolflareWalletAdapter,
-} from "@solana/wallet-adapter-wallets";
+import { ConnectionProvider, WalletProvider, useWallet } from "@solana/wallet-adapter-react";
+import { PhantomWalletAdapter, SolflareWalletAdapter } from "@solana/wallet-adapter-wallets";
 import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
 import "@solana/wallet-adapter-react-ui/styles.css";
 
-// ---------- ROUTE TYPES ----------
 type Route =
   | "landing"
   | "connect"
@@ -64,16 +55,12 @@ type Route =
   | "transfers"
   | "profile";
 
-// ---------- CONFIG ----------
-const API_BASE =
-  import.meta.env.VITE_API_BASE || "https://fst-backend-z7bc.onrender.com";
-const SOLANA_RPC =
-  import.meta.env.VITE_SOLANA_RPC || "https://api.devnet.solana.com";
+const API_BASE = import.meta.env.VITE_API_BASE || "https://fst-backend-z7bc.onrender.com";
+const SOLANA_RPC = import.meta.env.VITE_SOLANA_RPC || "https://api.devnet.solana.com";
 
 const getToken = () => localStorage.getItem("fst_token") || "";
 const setToken = (token: string) => localStorage.setItem("fst_token", token);
 
-// ---------- MAIN APP ----------
 function AppInner() {
   const [route, setRoute] = useState<Route>("landing");
   const stackRef = useRef<Route[]>(["landing"]);
@@ -82,12 +69,10 @@ function AppInner() {
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
 
-  // ---------- NAVIGATION ----------
   const go = (next: Route) => {
     stackRef.current.push(next);
     setRoute(next);
   };
-
   const back = () => {
     const stack = stackRef.current;
     if (stack.length > 1) {
@@ -96,7 +81,6 @@ function AppInner() {
     }
   };
 
-  // ---------- RESTORE SESSION ----------
   useEffect(() => {
     (async () => {
       const token = getToken();
@@ -122,7 +106,6 @@ function AppInner() {
     })();
   }, []);
 
-  // ---------- WALLET CONNECT ----------
   const handleConnected = (addr: string) => {
     setWalletAddress(addr);
     localStorage.setItem("sol_wallet", addr);
@@ -130,7 +113,6 @@ function AppInner() {
     go("home");
   };
 
-  // ---------- LAUNCH ----------
   const onLaunch = () => {
     const token = getToken();
     if (token) {
@@ -140,25 +122,16 @@ function AppInner() {
     go("connect");
   };
 
-  // ---------- RENDER ----------
   if (loading) return <div style={{ padding: 40 }}>Loading...</div>;
 
   return (
     <>
-      {route === "landing" && (
-        <Landing onGetStarted={onLaunch} onRewards={() => go("rewards")} />
-      )}
+      {route === "landing" && <Landing onGetStarted={onLaunch} onRewards={() => go("rewards")} />}
 
       {route === "connect" && (
         <div style={{ display: "grid", gap: 12, padding: 16 }}>
-          <SignInWithWallet
-            onConnected={handleConnected}
-            onToken={(t) => setToken(t)}
-          />
-          <small>
-            If you don’t see the wallet popup, click the Phantom icon in your
-            browser toolbar.
-          </small>
+          <SignInWithWallet onConnected={handleConnected} onToken={(t) => setToken(t)} />
+          <small>If you don’t see the wallet popup, click the Phantom icon in your browser toolbar.</small>
         </div>
       )}
 
@@ -183,24 +156,12 @@ function AppInner() {
         />
       )}
 
-      {route === "contestTypes" && (
-        <ContestTypes onBack={back} onJoined={() => go("teamSelect")} />
-      )}
-      {route === "teamSelect" && (
-        <TeamSelection onBack={back} onNext={() => go("leaderboard")} />
-      )}
-      {route === "joinContest" && (
-        <JoinContest onSelect={() => go("create")} onBack={back} />
-      )}
-      {route === "create" && (
-        <CreateTeam onNext={() => go("leaderboard")} onBack={back} />
-      )}
-      {route === "leaderboard" && (
-        <Leaderboard onNext={() => go("rewards")} onBack={back} />
-      )}
-      {route === "rewards" && (
-        <Rewards onBack={back} onEnterApp={() => go("home")} />
-      )}
+      {route === "contestTypes" && <ContestTypes onBack={back} onJoined={(r) => go("teamSelect")} />}
+      {route === "teamSelect" && <TeamSelection onBack={back} onNext={() => go("leaderboard")} />}
+      {route === "joinContest" && <JoinContest onSelect={() => go("create")} onBack={back} />}
+      {route === "create" && <CreateTeam onNext={() => go("leaderboard")} onBack={back} />}
+      {route === "leaderboard" && <Leaderboard onNext={() => go("rewards")} onBack={back} />}
+      {route === "rewards" && <Rewards onBack={back} onEnterApp={() => go("home")} />}
       {route === "viewteam" && <ViewTeam onBack={back} />}
       {route === "top10" && <Top10 onBack={back} />}
       {route === "fixtures" && <Fixtures onBack={back} />}
@@ -216,12 +177,9 @@ function AppInner() {
   );
 }
 
-// ---------- ROOT ----------
+/* ---------- ROOT ---------- */
 const endpoint = SOLANA_RPC;
-const wallets = [
-  new PhantomWalletAdapter(),
-  new SolflareWalletAdapter(),
-];
+const wallets = [new PhantomWalletAdapter(), new SolflareWalletAdapter()];
 
 const root = createRoot(document.getElementById("root")!);
 
