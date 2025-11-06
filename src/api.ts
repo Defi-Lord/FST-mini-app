@@ -40,7 +40,6 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     return (await res.json()) as T;
   }
 
-  // Collect best possible error message
   let message = `HTTP ${res.status}`;
   try {
     const txt = await res.text();
@@ -117,6 +116,31 @@ export function listContests() {
   return api.get<{ contests: Contest[] }>("/admin/contests");
 }
 
+/** ✅ Added: createContest */
+export function createContest(input: {
+  title: string;
+  realm: Contest["realm"];
+  entryFee: number;
+  active?: boolean;
+  startAt?: string;
+  endAt?: string;
+}) {
+  return api.post<{ ok: true; contest: Contest }>("/admin/contests", input);
+}
+
+/** ✅ Added: toggleContest */
+export function toggleContest(id: string, active: boolean) {
+  return api.patch<{ ok: true; contest: Contest }>(
+    `/admin/contests/${id}/toggle`,
+    { active }
+  );
+}
+
+/** ✅ Added: deleteContest */
+export function deleteContest(id: string) {
+  return api.delete<{ ok: true }>(`/admin/contests/${id}`);
+}
+
 /* ===== Leaderboard (admin + public) ===== */
 export type LeaderboardEntry = {
   rank: number;
@@ -128,7 +152,10 @@ export type LeaderboardEntry = {
   createdAt?: string;
 };
 
-export function getContestLeaderboardAdmin(contestId: string, opts?: { limit?: number; offset?: number }) {
+export function getContestLeaderboardAdmin(
+  contestId: string,
+  opts?: { limit?: number; offset?: number }
+) {
   const q = new URLSearchParams();
   if (opts?.limit != null) q.set("limit", String(opts.limit));
   if (opts?.offset != null) q.set("offset", String(opts.offset));
@@ -140,6 +167,14 @@ export function getContestLeaderboardAdmin(contestId: string, opts?: { limit?: n
     offset: number;
     limit: number | null;
   }>(`/admin/contests/${encodeURIComponent(contestId)}/leaderboard${qs}`);
+}
+
+/** ✅ Added alias for compatibility */
+export function getContestLeaderboard(
+  contestId: string,
+  opts?: { limit?: number; offset?: number }
+) {
+  return getContestLeaderboardAdmin(contestId, opts);
 }
 
 export function getPublicLeaderboard(contestId: string, opts?: { limit?: number; offset?: number }) {
@@ -169,29 +204,43 @@ export function listUsers() {
 }
 
 export function getUserDetail(id: string) {
-  return api.get<{ user: AdminUser; contests: any[] }>(`/admin/users/${encodeURIComponent(id)}`);
+  return api.get<{ user: AdminUser; contests: any[] }>(
+    `/admin/users/${encodeURIComponent(id)}`
+  );
 }
 
 /* ==========================================================
    Public: Join Flow (FREE + PAID)
    ========================================================== */
 export function joinContest(contestId: string, team?: any) {
-  return api.post<{ ok: boolean; entry?: any; created?: boolean }>(`/contests/${encodeURIComponent(contestId)}/join`, team ? { team } : undefined);
+  // ✅ restore created flag so TS2339 disappears
+  return api.post<{ ok: boolean; entry?: any; created?: boolean }>(
+    `/contests/${encodeURIComponent(contestId)}/join`,
+    team ? { team } : undefined
+  );
 }
 
 export function startPaidJoin(contestId: string) {
-  return api.post<{ to: string; amountLamports: number; memo: string; from: string }>(`/contests/${encodeURIComponent(contestId)}/join/start`);
+  return api.post<{ to: string; amountLamports: number; memo: string; from: string }>(
+    `/contests/${encodeURIComponent(contestId)}/join/start`
+  );
 }
 
 export function verifyPaidJoin(contestId: string, signature: string) {
-  return api.post<{ ok: boolean; entry?: any }>(`/contests/${encodeURIComponent(contestId)}/join/verify`, { signature });
+  return api.post<{ ok: boolean; entry?: any; created?: boolean }>(
+    `/contests/${encodeURIComponent(contestId)}/join/verify`,
+    { signature }
+  );
 }
 
 /* ==========================================================
    History (per-user, per-contest)
    ========================================================== */
 export function getMyHistory(contestId: string) {
-  return api.get<{ contest: any; scores: Array<{ round: number; points: number; createdAt: string }> }>(`/contests/${encodeURIComponent(contestId)}/my/history`);
+  return api.get<{
+    contest: any;
+    scores: Array<{ round: number; points: number; createdAt: string }>;
+  }>(`/contests/${encodeURIComponent(contestId)}/my/history`);
 }
 
 /* ==========================================================
@@ -202,7 +251,12 @@ export function fetchBootstrap() {
 }
 
 export function fetchFixtures(query?: Record<string, string | number | boolean>) {
-  const q = query && Object.keys(query).length ? `?${new URLSearchParams(Object.entries(query).map(([k, v]) => [k, String(v)]))}` : "";
+  const q =
+    query && Object.keys(query).length
+      ? `?${new URLSearchParams(
+          Object.entries(query).map(([k, v]) => [k, String(v)])
+        )}`
+      : "";
   return api.get<any>(`/fpl/api/fixtures/${q}`);
 }
 
