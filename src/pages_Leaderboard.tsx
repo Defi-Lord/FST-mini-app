@@ -21,8 +21,36 @@ function recomputePoints(team: Player[]): number {
   )
 }
 
+function shortWallet(w: string) {
+  if (!w) return 'Anon'
+  if (w.length <= 12) return w
+  return `${w.slice(0, 6)}…${w.slice(-4)}`
+}
+
+/** Ask backend for leaderboard snapshot */
+async function loadBackendLeaderboard(realm: string): Promise<Entry[] | null> {
+  try {
+    const res = await fetch(`/leaderboard/${encodeURIComponent(realm.toUpperCase())}`, { cache: 'no-store' })
+    if (!res.ok) return null
+    const j = await res.json()
+    // j.snapshot.entries -> { wallet, points, name? }
+    const arr = (j?.snapshot?.entries || []).map((e: any) => ({
+      name: e.name || shortWallet(String(e?.wallet || 'Anon')),
+      points: Number(e?.points ?? 0),
+    }))
+    return arr.length ? arr : null
+  } catch {
+    return null
+  }
+}
+
 // realm-specific leaderboard endpoints with graceful fallback
 async function loadExternalLeaderboard(realm: 'free' | 'weekly' | 'monthly' | 'seasonal'): Promise<Entry[] | null> {
+  // try backend first
+  const fromBackend = await loadBackendLeaderboard(realm)
+  if (fromBackend) return fromBackend
+
+  // fallbacks (static files)
   const tries = [
     `/leaderboard_${realm}.json`,
     `/leaderboard.json?realm=${encodeURIComponent(realm)}`,

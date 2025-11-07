@@ -1,6 +1,6 @@
 // src/pages_History.tsx
 import React from 'react';
-import { listContests, getMyHistory, type Contest } from './api';
+import { listContests, type Contest } from './api';
 
 export default function HistoryPage({ onBack }: { onBack?: () => void }) {
   const [contests, setContests] = React.useState<Contest[]>([]);
@@ -26,14 +26,22 @@ export default function HistoryPage({ onBack }: { onBack?: () => void }) {
     if (!selected) return;
     setBusy(true); setErr(null);
     try {
-      const r = await getMyHistory(selected);
-      const realm = String(r.contest.realm);
-      const all = r.scores.map(s => ({ round: s.round, points: s.points }));
+      // call backend endpoint (requires auth cookie / bearer token via api wrapper)
+      const res = await fetch(`/history/contest/${encodeURIComponent(selected)}/my`, {
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const j = await res.json();
+      if (!j?.ok) throw new Error(j?.error || 'No data');
+
+      const realm = String(j?.contest?.realm || '');
+      const all = (j.scores || []).map((s: any) => ({ round: Number(s.round || 0), points: Number(s.points || 0) }));
       let limited = all;
       if (realm === 'FREE' || realm === 'WEEKLY' || realm === 'MONTHLY') {
         limited = all.slice(-10); // FREE/WEEKLY/MONTHLY → last 10 weeks
       } // SEASONAL → all weeks
-      setMeta({ title: r.contest.title, realm });
+      setMeta({ title: String(j.contest.title || ''), realm });
       setRows(limited);
     } catch (e: any) {
       setErr(String(e?.message || e));
