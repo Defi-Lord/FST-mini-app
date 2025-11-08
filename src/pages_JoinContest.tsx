@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import TopBar from './components_TopBar'
 import { useWallet } from '@solana/wallet-adapter-react'
-import { Connection, clusterApiUrl, SystemProgram, Transaction } from '@solana/web3.js'
+import { Connection, clusterApiUrl, SystemProgram, Transaction, PublicKey } from '@solana/web3.js'
 
 type Contest = { _id?: string; name: string; entryFee?: number; active?: boolean }
 const contests: Contest[] = [
@@ -21,10 +21,13 @@ export default function JoinContest({ onSelect, onBack }: { onSelect: () => void
 
   const handleJoin = async (contest: Contest) => {
     if (!wallet.publicKey) return alert('Connect your wallet first')
+    if (!contest._id) return alert('Contest not found')
+
     try {
       setLoading(true)
-      const recipient = new window.solanaWeb3.PublicKey(process.env.NEXT_PUBLIC_RECEIVER_WALLET!)
-      const tx = new Transaction().add(
+
+      const recipient = new PublicKey(process.env.NEXT_PUBLIC_RECEIVER_WALLET || '')
+      const transaction = new Transaction().add(
         SystemProgram.transfer({
           fromPubkey: wallet.publicKey,
           toPubkey: recipient,
@@ -32,14 +35,18 @@ export default function JoinContest({ onSelect, onBack }: { onSelect: () => void
         })
       )
 
-      const sig = await wallet.sendTransaction(tx, connection)
-      await connection.confirmTransaction(sig, 'confirmed')
+      const signature = await wallet.sendTransaction(transaction, connection)
+      await connection.confirmTransaction(signature, 'confirmed')
 
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/contests/${contest._id}/join`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token')}` },
-        body: JSON.stringify({ txSignature: sig }),
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
+        },
+        body: JSON.stringify({ txSignature: signature }),
       })
+
       const data = await res.json()
       if (data.ok) {
         setMessage('Successfully joined contest!')
@@ -48,7 +55,7 @@ export default function JoinContest({ onSelect, onBack }: { onSelect: () => void
         alert(data.error || 'Join failed')
       }
     } catch (err: any) {
-      console.error(err)
+      console.error('Join contest error:', err)
       alert('Transaction or join failed')
     } finally {
       setLoading(false)
@@ -73,7 +80,9 @@ export default function JoinContest({ onSelect, onBack }: { onSelect: () => void
               >
                 <div style={{ fontWeight: 800 }}>
                   <div>{c.name}</div>
-                  <div className="subtle">{active ? `${c.entryFee} SOL entry` : 'League'}</div>
+                  <div className="subtle">
+                    {active ? `${c.entryFee} SOL entry` : 'League'}
+                  </div>
                 </div>
                 <div style={{ fontWeight: 800 }}>
                   {active ? (loading ? 'Processing...' : 'Enter') : 'Coming soon'}
