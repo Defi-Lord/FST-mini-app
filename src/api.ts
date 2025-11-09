@@ -14,6 +14,13 @@ export function getToken(): string {
   }
 }
 
+/** Save JWT to localStorage */
+export function setToken(token: string) {
+  try {
+    localStorage.setItem("auth_token", token);
+  } catch {}
+}
+
 /** Build headers with Authorization + JSON when body is present */
 function buildHeaders(init?: RequestInit): Headers {
   const headers = new Headers(init?.headers || {});
@@ -83,15 +90,22 @@ export const api = {
 /* ==========================================================
    Auth / Session
    ========================================================== */
-export type IntrospectResponse = { ok?: boolean; payload?: any; error?: string };
+export type IntrospectResponse = { ok?: boolean; role?: string; wallet?: string; error?: string };
 
-export function getMe() {
-  return api.get<{ user: { id: string; role: string } }>("/me");
+export async function authVerify(address: string, signature: string, message: string) {
+  const res = await api.post<{ ok: boolean; token: string; role: string }>(
+    "/auth/verify",
+    { address, signature, message }
+  );
+  if (res.ok && res.token) {
+    setToken(res.token);
+  }
+  return res;
 }
 
-export function authIntrospect(token?: string) {
-  const t = token || getToken();
-  return api.post<IntrospectResponse>("/auth/introspect", { token: t });
+/** ✅ Fixed: token now goes via Authorization header, not body */
+export function authIntrospect() {
+  return api.post<IntrospectResponse>("/auth/introspect");
 }
 
 /* ==========================================================
@@ -213,7 +227,6 @@ export function getUserDetail(id: string) {
    Public: Join Flow (FREE + PAID)
    ========================================================== */
 export function joinContest(contestId: string, team?: any) {
-  // ✅ restore created flag so TS2339 disappears
   return api.post<{ ok: boolean; entry?: any; created?: boolean }>(
     `/contests/${encodeURIComponent(contestId)}/join`,
     team ? { team } : undefined
