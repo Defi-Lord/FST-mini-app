@@ -1,38 +1,52 @@
 // src/pages_Profile.tsx
-import React from 'react'
-import TopBar from './components_TopBar'
-import { useApp } from './state'
-import { getMe, signOut } from './api'
+import React from 'react';
+import TopBar from './components_TopBar';
+import { useApp } from './state';
+import { authIntrospect, signOut } from './api';
 
 export default function Profile({ onBack }: { onBack?: () => void }) {
-  const { walletAddress } = useApp()
-  const [userId, setUserId] = React.useState<string>(walletAddress || '')
-  const [tgUser, setTgUser] = React.useState<string>('—')
+  const { walletAddress } = useApp();
+  const [userId, setUserId] = React.useState<string>(walletAddress || '');
+  const [tgUser, setTgUser] = React.useState<string>('—');
+  const [role, setRole] = React.useState<string>('USER');
 
   React.useEffect(() => {
     (async () => {
       try {
-        const me = await getMe()
-        setUserId(me.user?.id || walletAddress || '')
-      } catch {}
+        const res = await authIntrospect();
+        if (res.ok && res.wallet) {
+          setUserId(res.wallet);
+          setRole(res.role || 'USER');
+        } else {
+          console.warn('Introspect failed:', res.error);
+        }
+      } catch (err) {
+        console.warn('Auth introspect error:', err);
+      }
+
       try {
-        const tg = (window as any)?.Telegram?.WebApp
-        const u = tg?.initDataUnsafe?.user
-        if (u?.username) setTgUser(`@${u.username}`)
-        else if (u?.first_name) setTgUser(`${u.first_name}${u?.last_name ? ' ' + u.last_name : ''}`)
-      } catch {}
-    })()
-  }, [walletAddress])
+        const tg = (window as any)?.Telegram?.WebApp;
+        const u = tg?.initDataUnsafe?.user;
+        if (u?.username) setTgUser(`@${u.username}`);
+        else if (u?.first_name)
+          setTgUser(`${u.first_name}${u?.last_name ? ' ' + u.last_name : ''}`);
+      } catch {
+        setTgUser('—');
+      }
+    })();
+  }, [walletAddress]);
 
-  const copy = (txt: string) => navigator.clipboard?.writeText(txt).then(() => alert('Copied!'))
+  const copy = (txt: string) => {
+    if (txt) navigator.clipboard?.writeText(txt).then(() => alert('Copied!'));
+  };
 
-  const short = (a: string) => a ? `${a.slice(0, 6)}…${a.slice(-6)}` : '—'
+  const short = (a: string) => (a ? `${a.slice(0, 6)}…${a.slice(-6)}` : '—');
 
   const doSignOut = () => {
-    signOut()
-    alert('Signed out')
-    onBack?.()
-  }
+    signOut();
+    alert('Signed out');
+    onBack?.();
+  };
 
   return (
     <div className="screen">
@@ -51,7 +65,13 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
             <div className="k">Wallet</div>
             <div className="v mono">{short(userId)}</div>
           </div>
-          <button className="btn-ghost" onClick={() => copy(userId)} disabled={!userId}>Copy</button>
+          <button
+            className="btn-ghost"
+            onClick={() => copy(userId)}
+            disabled={!userId}
+          >
+            Copy
+          </button>
         </div>
 
         <div className="card rowc">
@@ -63,17 +83,26 @@ export default function Profile({ onBack }: { onBack?: () => void }) {
 
         <div className="card rowc">
           <div className="kv">
+            <div className="k">Role</div>
+            <div className="v">{role}</div>
+          </div>
+        </div>
+
+        <div className="card rowc">
+          <div className="kv">
             <div className="k">Network</div>
             <div className="v">Solana (Mainnet)</div>
           </div>
         </div>
 
-        <div className="row" style={{marginTop: 18}}>
-          <button className="btn danger" onClick={doSignOut}>Sign out</button>
+        <div className="row" style={{ marginTop: 18 }}>
+          <button className="btn danger" onClick={doSignOut}>
+            Sign out
+          </button>
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 const css = String.raw`
