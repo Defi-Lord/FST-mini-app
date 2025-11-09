@@ -103,9 +103,16 @@ export async function authVerify(address: string, signature: string, message: st
   return res;
 }
 
-/** ✅ Fixed: token now goes via Authorization header, not body */
+/** ✅ Fixed: token now goes via Authorization header */
 export function authIntrospect() {
   return api.post<IntrospectResponse>("/auth/introspect");
+}
+
+/** ✅ Added back for compatibility with older code */
+export async function getMe() {
+  const res = await authIntrospect();
+  if (!res.ok) throw new Error(res.error || "Unauthorized");
+  return { user: { id: res.wallet, role: res.role } };
 }
 
 /* ==========================================================
