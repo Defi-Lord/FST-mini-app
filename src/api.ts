@@ -78,16 +78,62 @@ export async function getMe() {
 }
 
 /* ============= Admin ============= */
-export function listContests() {
-  return api.get<{ contests: Contest[] }>('/admin/contests')
-}
 export type Contest = {
   id: string
-  title?: string
+  name?: string
   realm?: string
   entryFee?: number
   active?: boolean
   createdAt?: string
+  startAt?: string
+  endAt?: string
+}
+
+export type AdminUser = {
+  wallet: string
+  role: string
+  createdAt: string
+}
+
+export type LeaderboardEntry = {
+  wallet: string
+  score: number
+  rank: number
+}
+
+export function adminHealth() {
+  return api.get<{ ok: boolean }>('/health')
+}
+
+export function listContests() {
+  return api.get<{ contests: Contest[] }>('/admin/contests')
+}
+
+export function createContest(data: {
+  name: string
+  type: string
+  entryFee?: number
+  registrationOpen?: boolean
+}) {
+  return api.post<{ ok: boolean; contest: Contest }>('/admin/contests/create', data)
+}
+
+export function toggleContest(id: string, open: boolean) {
+  return api.patch<{ ok: boolean }>(`/admin/contests/${id}/toggle`, { open })
+}
+
+export function deleteContest(id: string) {
+  return api.delete<{ ok: boolean }>(`/admin/contests/${id}`)
+}
+
+export function listUsers() {
+  return api.get<{ ok: boolean; users: AdminUser[] }>('/admin/users')
+}
+
+export function getContestLeaderboard(id: string) {
+  return api.get<{ ok: boolean; leaderboard: LeaderboardEntry[] }>(
+    `/admin/contests/${id}/leaderboard`
+  )
 }
 
 /* ============= User History ============= */
@@ -100,7 +146,7 @@ export function joinContest(contestId: string, team?: any) {
   return api.post<{ ok: boolean; created?: boolean }>(`/contests/${contestId}/join`, team)
 }
 export function startPaidJoin(contestId: string) {
-  return api.post<{ to: string; amountLamports: number; memo?: string }>(
+  return api.post<{ ok: boolean; to: string; amountLamports: number; memo?: string }>(
     `/contests/${contestId}/join/start`
   )
 }

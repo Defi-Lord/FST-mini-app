@@ -282,7 +282,14 @@ export default function HomeHub({
         </button>
       </nav>
 
-      <MenuDrawer open={menuOpen} onClose={() => setMenuOpen(false)} />
+      <MenuDrawer
+  open={menuOpen}
+  onClose={() => setMenuOpen(false)}
+  onHome={() => {}}
+  onHowToPlay={() => {}}
+  onContact={() => {}}
+  onAbout={() => {}}
+/>
     </div>
   )
 }
