@@ -110,8 +110,6 @@ export async function getMe() {
 /* =======================================================
    ADMIN TYPES + ENDPOINTS
    ======================================================= */
-
-/** Contest structure with both backend + frontend naming */
 export type Contest = {
   id?: string
   _id?: string
@@ -129,7 +127,6 @@ export type Contest = {
   endAt?: string
 }
 
-/** User structure */
 export type AdminUser = {
   id?: string
   _id?: string
@@ -140,7 +137,6 @@ export type AdminUser = {
   updatedAt?: string
 }
 
-/** Leaderboard structure */
 export type LeaderboardEntry = {
   userId?: string
   wallet?: string
@@ -150,7 +146,6 @@ export type LeaderboardEntry = {
   rank?: number
 }
 
-/** Admin endpoints */
 export function adminHealth() {
   return api.get<{ ok: boolean; status?: string }>('/health')
 }
@@ -159,15 +154,16 @@ export function listContests() {
   return api.get<{ ok?: boolean; contests: Contest[] }>('/admin/contests')
 }
 
-/* ✅ allow both name/title when creating contests */
+/* ✅ allow both name/title/realm when creating contests */
 export function createContest(data: {
   name?: string
   title?: string
+  realm?: string
   type: string
   entryFee?: number
   registrationOpen?: boolean
 }) {
-  const payload = { ...data, name: data.name ?? data.title ?? '' }
+  const payload = { ...data, name: data.name ?? data.title ?? '', realm: data.realm ?? 'WEEKLY' }
   return api.post<{ ok: boolean; contest: Contest }>('/admin/contests/create', payload)
 }
 
@@ -234,11 +230,9 @@ export function verifyPaidJoin(contestId: string, signature: string) {
 export function fetchBootstrap() {
   return api.get<any>('/fpl/api/bootstrap-static/')
 }
-
 export function fetchFixtures() {
   return api.get<any>('/fpl/api/fixtures/')
 }
-
 export function fetchElementSummary(id: string | number) {
   return api.get<any>(`/fpl/api/element-summary/${id}/`)
 }
