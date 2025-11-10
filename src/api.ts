@@ -159,13 +159,16 @@ export function listContests() {
   return api.get<{ ok?: boolean; contests: Contest[] }>('/admin/contests')
 }
 
+/* ✅ allow both name/title when creating contests */
 export function createContest(data: {
-  name: string
+  name?: string
+  title?: string
   type: string
   entryFee?: number
   registrationOpen?: boolean
 }) {
-  return api.post<{ ok: boolean; contest: Contest }>('/admin/contests/create', data)
+  const payload = { ...data, name: data.name ?? data.title ?? '' }
+  return api.post<{ ok: boolean; contest: Contest }>('/admin/contests/create', payload)
 }
 
 export function toggleContest(id: string, open: boolean) {
@@ -180,10 +183,14 @@ export function listUsers() {
   return api.get<{ ok: boolean; users: AdminUser[] }>('/admin/users')
 }
 
-export function getContestLeaderboard(id: string) {
-  return api.get<{ ok: boolean; leaderboard: LeaderboardEntry[] }>(
-    `/admin/contests/${id}/leaderboard`
-  )
+/* ✅ support backend returning either 'entries' or 'leaderboard' */
+export async function getContestLeaderboard(id: string) {
+  const res = await api.get<{
+    ok: boolean
+    leaderboard?: LeaderboardEntry[]
+    entries?: LeaderboardEntry[]
+  }>(`/admin/contests/${id}/leaderboard`)
+  return { ok: res.ok, leaderboard: res.leaderboard || res.entries || [] }
 }
 
 /* =======================================================
@@ -203,10 +210,15 @@ export function joinContest(contestId: string, team?: any) {
   )
 }
 
+/* ✅ include optional created to satisfy TS in HomeHub */
 export function startPaidJoin(contestId: string) {
-  return api.post<{ ok: boolean; to: string; amountLamports: number; memo?: string }>(
-    `/contests/${contestId}/join/start`
-  )
+  return api.post<{
+    ok: boolean
+    to: string
+    amountLamports: number
+    memo?: string
+    created?: boolean
+  }>(`/contests/${contestId}/join/start`)
 }
 
 export function verifyPaidJoin(contestId: string, signature: string) {
