@@ -190,13 +190,18 @@ export function listUsers() {
 
 /* ✅ handle both `entries` and `leaderboard` safely */
 export async function getContestLeaderboard(id: string) {
+  // Allow both possible backend shapes: `entries` or `leaderboard`
   const res = await api.get<{
     ok: boolean
     leaderboard?: LeaderboardEntry[]
     entries?: LeaderboardEntry[]
   }>(`/admin/contests/${id}/leaderboard`)
-  return { ok: res.ok, leaderboard: res.leaderboard ?? res.entries ?? [] }
+
+  // Normalize before returning
+  const leaderboard = res.leaderboard ?? res.entries ?? []
+  return { ok: res.ok, leaderboard, entries: leaderboard }
 }
+
 
 /* =======================================================
    USER HISTORY

@@ -144,7 +144,7 @@ export default function AdminPage({ onBack }: { onBack?: () => void }) {
     setErr(null);
     try {
       const res = await getContestLeaderboard(selectedContest);
-      setLeaderboard(res.entries);
+      setLeaderboard(res.leaderboard);
     } catch (e: any) {
       setErr(String(e?.message || e));
       setLeaderboard([]);
