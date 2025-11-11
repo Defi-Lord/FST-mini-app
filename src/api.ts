@@ -154,7 +154,7 @@ export function listContests() {
   return api.get<{ ok?: boolean; contests: Contest[] }>('/admin/contests')
 }
 
-/* ✅ allow both name/title/realm when creating contests */
+/* ✅ allow title, realm, startAt, endAt when creating contests */
 export function createContest(data: {
   name?: string
   title?: string
@@ -162,8 +162,16 @@ export function createContest(data: {
   type: string
   entryFee?: number
   registrationOpen?: boolean
+  startAt?: string
+  endAt?: string
 }) {
-  const payload = { ...data, name: data.name ?? data.title ?? '', realm: data.realm ?? 'WEEKLY' }
+  const payload = {
+    ...data,
+    name: data.name ?? data.title ?? '',
+    realm: data.realm ?? 'WEEKLY',
+    startAt: data.startAt ?? null,
+    endAt: data.endAt ?? null,
+  }
   return api.post<{ ok: boolean; contest: Contest }>('/admin/contests/create', payload)
 }
 
@@ -206,7 +214,7 @@ export function joinContest(contestId: string, team?: any) {
   )
 }
 
-/* ✅ include optional created to satisfy TS in HomeHub */
+/* include optional created for compatibility */
 export function startPaidJoin(contestId: string) {
   return api.post<{
     ok: boolean
