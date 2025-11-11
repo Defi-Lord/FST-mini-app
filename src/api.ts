@@ -154,12 +154,12 @@ export function listContests() {
   return api.get<{ ok?: boolean; contests: Contest[] }>('/admin/contests')
 }
 
-/* ✅ allow title, realm, startAt, endAt when creating contests */
+/* ✅ make `type` optional */
 export function createContest(data: {
   name?: string
   title?: string
   realm?: string
-  type: string
+  type?: string
   entryFee?: number
   registrationOpen?: boolean
   startAt?: string
@@ -168,6 +168,7 @@ export function createContest(data: {
   const payload = {
     ...data,
     name: data.name ?? data.title ?? '',
+    type: data.type ?? 'general',
     realm: data.realm ?? 'WEEKLY',
     startAt: data.startAt ?? null,
     endAt: data.endAt ?? null,
@@ -187,14 +188,14 @@ export function listUsers() {
   return api.get<{ ok: boolean; users: AdminUser[] }>('/admin/users')
 }
 
-/* ✅ support backend returning either 'entries' or 'leaderboard' */
+/* ✅ handle both `entries` and `leaderboard` safely */
 export async function getContestLeaderboard(id: string) {
   const res = await api.get<{
     ok: boolean
     leaderboard?: LeaderboardEntry[]
     entries?: LeaderboardEntry[]
   }>(`/admin/contests/${id}/leaderboard`)
-  return { ok: res.ok, leaderboard: res.leaderboard || res.entries || [] }
+  return { ok: res.ok, leaderboard: res.leaderboard ?? res.entries ?? [] }
 }
 
 /* =======================================================
@@ -214,7 +215,6 @@ export function joinContest(contestId: string, team?: any) {
   )
 }
 
-/* include optional created for compatibility */
 export function startPaidJoin(contestId: string) {
   return api.post<{
     ok: boolean
