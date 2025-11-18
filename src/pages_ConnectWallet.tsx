@@ -1,7 +1,6 @@
 // src/pages_ConnectWallet.tsx
-import React from "react";
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { API_BASE as API_BASE_CONFIG, setToken } from '../api' // <-- unified API_BASE + setToken
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { API_BASE as API_BASE_CONFIG, setToken } from '../api' // keep this path (src/api.ts)
 
 type Props = {
   onBack?: () => void
@@ -34,7 +33,13 @@ type WalletItem = {
   off?: ((ev: string, fn: (...args: any[]) => void) => void) | undefined
 }
 
-const safeGetSaved = () => { try { return localStorage.getItem('sol_wallet') } catch { return null } }
+const safeGetSaved = () => {
+  try {
+    return localStorage.getItem('sol_wallet')
+  } catch {
+    return null
+  }
+}
 const safeSetSaved = (addr: string | null) => {
   try {
     if (!addr) localStorage.removeItem('sol_wallet')
@@ -43,25 +48,31 @@ const safeSetSaved = (addr: string | null) => {
 }
 
 function toB58(pk: any): string | null {
-  try { return pk?.toBase58?.() ?? pk?.toString?.() ?? null } catch { return null }
+  try {
+    if (!pk) return null
+    return pk?.toBase58?.() ?? pk?.toString?.() ?? null
+  } catch {
+    return null
+  }
 }
 
-function toBase64(u8: Uint8Array) {
-  let s = ''
-  for (let i = 0; i < u8.length; i++) s += String.fromCharCode(u8[i])
-  return btoa(s)
+function u8ToBase64(u8: Uint8Array) {
+  let binary = ''
+  for (let i = 0; i < u8.length; i++) binary += String.fromCharCode(u8[i])
+  return btoa(binary)
 }
 
 /** iOS + Phantom helpers */
-const isiOS = () => /iPhone|iPad|iPod/i.test(navigator.userAgent)
-const isPhantomInApp = () => !!(window.solana && (window.solana.isPhantom || window.phantom?.solana))
+const isiOS = () => (typeof navigator !== 'undefined' ? /iPhone|iPad|iPod/i.test(navigator.userAgent) : false)
+const isPhantomInApp = () =>
+  typeof window !== 'undefined' && !!(window.solana && (window.solana.isPhantom || window.phantom?.solana))
 const phantomBrowseLink = () => {
   const url = typeof window !== 'undefined' ? window.location.href : ''
   return `https://phantom.app/ul/browse/${encodeURIComponent(url)}`
 }
 
 /** Backend calls */
-/** keep using fetch directly for nonce/verify because these endpoints may need a specific shape */
+/** Use fetch directly for nonce/verify (explicit shapes) */
 async function fetchNonce(walletAddress: string) {
   const res = await fetch(`${API_BASE_CONFIG}/auth/nonce`, {
     method: 'POST',
@@ -72,7 +83,7 @@ async function fetchNonce(walletAddress: string) {
   return res.json() as Promise<{ nonce: string; message: string }>
 }
 
-async function verifySignature(payload: { walletAddress: string, nonce: string, signature: string }) {
+async function verifySignature(payload: { walletAddress: string; nonce: string; signature: string }) {
   const res = await fetch(`${API_BASE_CONFIG}/auth/verify`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -80,7 +91,9 @@ async function verifySignature(payload: { walletAddress: string, nonce: string, 
   })
   if (!res.ok) {
     let err = ''
-    try { err = (await res.json()).error } catch {}
+    try {
+      err = (await res.json()).error
+    } catch {}
     throw new Error(`Verify failed: ${res.status} ${err}`)
   }
   return res.json() as Promise<{ token: string }>
@@ -88,7 +101,7 @@ async function verifySignature(payload: { walletAddress: string, nonce: string, 
 
 /** Sign + verify flow (server returns the exact message to sign) */
 async function signAndVerify(provider: any, walletAddress: string) {
-  // 1) get nonce + message (message must match server; do not hardcode)
+  // 1) get nonce + message (server-provided message must be used)
   const { nonce, message } = await fetchNonce(walletAddress)
 
   // 2) sign with wallet
@@ -96,15 +109,58 @@ async function signAndVerify(provider: any, walletAddress: string) {
   if (!provider?.signMessage) {
     throw new Error('This wallet cannot sign messages. Enable "Message signing" in wallet settings.')
   }
-  // Some wallets return {signature}, others a Uint8Array directly — normalize:
-  const signed = await provider.signMessage(enc.encode(message), 'utf8')
-  const rawSig: Uint8Array =
-    signed?.signature instanceof Uint8Array ? signed.signature : (signed instanceof Uint8Array ? signed : new Uint8Array(signed))
-  const signatureBase64 = toBase64(rawSig)
+
+  // handle adapters that accept (message, encoding) or (message)
+  const signed = await provider.signMessage(enc.encode(message), 'utf8').catch(async (e: any) => {
+    // some providers expect a different call signature - try without encoding arg
+    return await provider.signMessage(enc.encode(message)).catch((err: any) => {
+      throw err
+    })
+  })
+
+  // Normalize many different shapes:
+  // - Uint8Array
+  // - { signature: Uint8Array }
+  // - { signature: base64-string }
+  // - base64 string
+  let signatureBase64: string | null = null
+
+  if (!signed) throw new Error('Empty signature returned from wallet')
+
+  if (typeof signed === 'string') {
+    // assume already base64 or hex string (we prefer base64)
+    signatureBase64 = signed
+  } else if (signed instanceof Uint8Array) {
+    signatureBase64 = u8ToBase64(signed)
+  } else if (typeof signed === 'object') {
+    const sig = signed.signature ?? signed.sig ?? signed?.data
+    if (!sig) {
+      // try coercing object -> Uint8Array
+      try {
+        signatureBase64 = u8ToBase64(new Uint8Array(signed as any))
+      } catch {
+        throw new Error('Unable to normalize wallet signature (object shape).')
+      }
+    } else if (typeof sig === 'string') {
+      signatureBase64 = sig
+    } else if (sig instanceof Uint8Array) {
+      signatureBase64 = u8ToBase64(sig)
+    } else {
+      signatureBase64 = u8ToBase64(new Uint8Array(sig))
+    }
+  } else {
+    // fallback attempt
+    try {
+      signatureBase64 = u8ToBase64(new Uint8Array(signed as any))
+    } catch {
+      throw new Error('Unable to normalize wallet signature.')
+    }
+  }
+
+  if (!signatureBase64) throw new Error('Failed to obtain normalized signature')
 
   // 3) verify with server -> returns JWT
   const { token } = await verifySignature({ walletAddress, nonce, signature: signatureBase64 })
-  // unify token storage for the whole app
   setToken(token)
   return token
 }
@@ -122,8 +178,10 @@ export default function ConnectWallet({ onBack, onConnected }: Props) {
   const didAuto = useRef(false)
   const listenersRef = useRef<{ [k: string]: (...args: any[]) => void }>({})
 
-  // Discover wallets
+  // Discover wallets (SSR-safe: only run in browser)
   const providers = useMemo<WalletItem[]>(() => {
+    if (typeof window === 'undefined') return []
+
     const list: WalletItem[] = []
 
     const phantom = window.phantom?.solana || (window.solana?.isPhantom ? window.solana : null)
@@ -206,7 +264,7 @@ export default function ConnectWallet({ onBack, onConnected }: Props) {
     try {
       const std = window.wallets?.get?.() || []
       const other = std.find((w: any) =>
-        !['phantom','backpack','solflare','exodus'].some(k => (w.name || '').toLowerCase().includes(k))
+        !['phantom', 'backpack', 'solflare', 'exodus'].some(k => (w.name || '').toLowerCase().includes(k))
       )
       if (other) {
         list.push({
@@ -397,7 +455,11 @@ export default function ConnectWallet({ onBack, onConnected }: Props) {
 
       <div className="cw-wrap">
         <div className="cw-top">
-          {onBack && <button className="cw-back" onClick={onBack} aria-label="Back">←</button>}
+          {onBack && (
+            <button className="cw-back" onClick={onBack} aria-label="Back">
+              ←
+            </button>
+          )}
           <h2 className="cw-title">Connect Wallet</h2>
           <div style={{ width: 36 }} />
         </div>
@@ -414,7 +476,7 @@ export default function ConnectWallet({ onBack, onConnected }: Props) {
           {connectedAddr ? (
             <div className="cw-connected">
               <div className="addr-tag">
-                Connected as <strong>{connectedAddr.slice(0,6)}…{connectedAddr.slice(-4)}</strong>
+                Connected as <strong>{connectedAddr.slice(0, 6)}…{connectedAddr.slice(-4)}</strong>
               </div>
               <div className="connected-actions">
                 <button onClick={() => { navigator.clipboard?.writeText(connectedAddr) }}>Copy Address</button>
@@ -433,8 +495,8 @@ export default function ConnectWallet({ onBack, onConnected }: Props) {
               href={phantomBrowseLink()}
               className="btn"
               style={{
-                display:'inline-block', marginTop:8, padding:'10px 14px',
-                borderRadius:12, border:'1px solid rgba(255,255,255,0.2)'
+                display: 'inline-block', marginTop: 8, padding: '10px 14px',
+                borderRadius: 12, border: '1px solid rgba(255,255,255,0.2)'
               }}
             >
               Open this page in Phantom
@@ -473,7 +535,6 @@ export default function ConnectWallet({ onBack, onConnected }: Props) {
 }
 
 /* ---------- Icons (inline) ---------- */
-// ... (icons unchanged from yours)
 function IconPhantom() {
   return (
     <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden>
@@ -503,7 +564,7 @@ function IconExodus() {
   return (
     <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden>
       <rect x="4" y="4" width="16" height="16" rx="4" />
-      <path d="M8 8l8 8M16 8l-8 8" stroke="#fff" strokeWidth="1.8" strokeLinecap="round"/>
+      <path d="M8 8l8 8M16 8l-8 8" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" />
     </svg>
   )
 }
@@ -511,7 +572,7 @@ function IconGeneric() {
   return (
     <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden>
       <circle cx="12" cy="12" r="10" />
-      <path d="M8 12h8M12 8v8" stroke="#fff" strokeWidth="1.6" strokeLinecap="round"/>
+      <path d="M8 12h8M12 8v8" stroke="#fff" strokeWidth="1.6" strokeLinecap="round" />
     </svg>
   )
 }
