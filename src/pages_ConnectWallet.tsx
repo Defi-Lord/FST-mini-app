@@ -1,16 +1,12 @@
 // src/pages_ConnectWallet.tsx
 import React from "react";
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { API_BASE as API_BASE_CONFIG, setToken } from '../api' // <-- unified API_BASE + setToken
 
 type Props = {
   onBack?: () => void
   onConnected: (address: string) => void
 }
-
-/** Backend API base (uses Vite env if present, falls back to localhost) */
-const API_BASE =
-  (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API_BASE) ||
-  'http://localhost:4000'
 
 /** Enforce nonce-sign on connect to get JWT */
 const SIGN_ON_CONNECT = true
@@ -45,12 +41,6 @@ const safeSetSaved = (addr: string | null) => {
     else localStorage.setItem('sol_wallet', addr)
   } catch {}
 }
-const setJWT = (token: string | null) => {
-  try {
-    if (!token) localStorage.removeItem('fst_jwt')
-    else localStorage.setItem('fst_jwt', token)
-  } catch {}
-}
 
 function toB58(pk: any): string | null {
   try { return pk?.toBase58?.() ?? pk?.toString?.() ?? null } catch { return null }
@@ -71,8 +61,9 @@ const phantomBrowseLink = () => {
 }
 
 /** Backend calls */
+/** keep using fetch directly for nonce/verify because these endpoints may need a specific shape */
 async function fetchNonce(walletAddress: string) {
-  const res = await fetch(`${API_BASE}/auth/nonce`, {
+  const res = await fetch(`${API_BASE_CONFIG}/auth/nonce`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ walletAddress }),
@@ -82,7 +73,7 @@ async function fetchNonce(walletAddress: string) {
 }
 
 async function verifySignature(payload: { walletAddress: string, nonce: string, signature: string }) {
-  const res = await fetch(`${API_BASE}/auth/verify`, {
+  const res = await fetch(`${API_BASE_CONFIG}/auth/verify`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -108,12 +99,13 @@ async function signAndVerify(provider: any, walletAddress: string) {
   // Some wallets return {signature}, others a Uint8Array directly — normalize:
   const signed = await provider.signMessage(enc.encode(message), 'utf8')
   const rawSig: Uint8Array =
-    signed?.signature instanceof Uint8Array ? signed.signature : new Uint8Array(signed)
+    signed?.signature instanceof Uint8Array ? signed.signature : (signed instanceof Uint8Array ? signed : new Uint8Array(signed))
   const signatureBase64 = toBase64(rawSig)
 
   // 3) verify with server -> returns JWT
   const { token } = await verifySignature({ walletAddress, nonce, signature: signatureBase64 })
-  setJWT(token)
+  // unify token storage for the whole app
+  setToken(token)
   return token
 }
 
@@ -251,7 +243,7 @@ export default function ConnectWallet({ onBack, onConnected }: Props) {
     const onAccount = (pk: any) => {
       const addr = toB58(pk)
       if (!addr) {
-        setJWT(null)
+        setToken('') // clear token
         safeSetSaved(null)
         setConnectedAddr(null)
         setConnectedId(null)
@@ -263,7 +255,7 @@ export default function ConnectWallet({ onBack, onConnected }: Props) {
       onConnected(addr)
     }
     const onDisconnect = () => {
-      setJWT(null)
+      setToken('')
       safeSetSaved(null)
       setConnectedAddr(null)
       setConnectedId(null)
@@ -369,7 +361,7 @@ export default function ConnectWallet({ onBack, onConnected }: Props) {
           throw new Error(e?.message || 'Signature was rejected — cannot continue.')
         }
       } else {
-        setJWT(null) // no auth session if not signing
+        setToken('') // no auth session if not signing
       }
 
       attachProviderEvents(provider, w.id)
@@ -393,7 +385,7 @@ export default function ConnectWallet({ onBack, onConnected }: Props) {
       await prov?.disconnect?.()
     } catch {}
     detachProviderEvents()
-    setJWT(null)
+    setToken('')
     safeSetSaved(null)
     setConnectedAddr(null)
     setConnectedId(null)
@@ -481,6 +473,7 @@ export default function ConnectWallet({ onBack, onConnected }: Props) {
 }
 
 /* ---------- Icons (inline) ---------- */
+// ... (icons unchanged from yours)
 function IconPhantom() {
   return (
     <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden>
@@ -523,7 +516,7 @@ function IconGeneric() {
   )
 }
 
-/* ---------- Styles (kept from your original, with neutral fills so they match your theme) ---------- */
+/* ---------- Styles (kept from your original) ---------- */
 function Style() {
   return (
     <style>{`

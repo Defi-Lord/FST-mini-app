@@ -15,7 +15,8 @@ export function getToken() {
 }
 export function setToken(token: string) {
   try {
-    localStorage.setItem('auth_token', token)
+    if (!token) localStorage.removeItem('auth_token')
+    else localStorage.setItem('auth_token', token)
   } catch {}
 }
 
@@ -190,18 +191,15 @@ export function listUsers() {
 
 /* ✅ handle both `entries` and `leaderboard` safely */
 export async function getContestLeaderboard(id: string) {
-  // Allow both possible backend shapes: `entries` or `leaderboard`
   const res = await api.get<{
     ok: boolean
     leaderboard?: LeaderboardEntry[]
     entries?: LeaderboardEntry[]
   }>(`/admin/contests/${id}/leaderboard`)
 
-  // Normalize before returning
   const leaderboard = res.leaderboard ?? res.entries ?? []
   return { ok: res.ok, leaderboard, entries: leaderboard }
 }
-
 
 /* =======================================================
    USER HISTORY
