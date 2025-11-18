@@ -147,15 +147,26 @@ export type LeaderboardEntry = {
   rank?: number
 }
 
+// ✅ Explicit admin request helper
+async function adminRequest<T>(path: string, init?: RequestInit) {
+  const token = getToken()
+  if (!token) throw new Error('Unauthorized: No admin token found')
+  const headers = new Headers(init?.headers || {})
+  headers.set('Authorization', `Bearer ${token}`)
+  if (!headers.has('Content-Type') && init?.body) {
+    headers.set('Content-Type', 'application/json')
+  }
+  return request<T>(path, { ...init, headers })
+}
+
 export function adminHealth() {
-  return api.get<{ ok: boolean; status?: string }>('/health')
+  return adminRequest<{ ok: boolean; status?: string }>('/health')
 }
 
 export function listContests() {
-  return api.get<{ ok?: boolean; contests: Contest[] }>('/admin/contests')
+  return adminRequest<{ ok?: boolean; contests: Contest[] }>('/admin/contests')
 }
 
-/* ✅ make `type` optional */
 export function createContest(data: {
   name?: string
   title?: string
@@ -174,24 +185,29 @@ export function createContest(data: {
     startAt: data.startAt ?? null,
     endAt: data.endAt ?? null,
   }
-  return api.post<{ ok: boolean; contest: Contest }>('/admin/contests/create', payload)
+  return adminRequest<{ ok: boolean; contest: Contest }>('/admin/contests/create', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
 }
 
 export function toggleContest(id: string, open: boolean) {
-  return api.patch<{ ok: boolean }>(`/admin/contests/${id}/toggle`, { open })
+  return adminRequest<{ ok: boolean }>(`/admin/contests/${id}/toggle`, {
+    method: 'PATCH',
+    body: JSON.stringify({ open }),
+  })
 }
 
 export function deleteContest(id: string) {
-  return api.delete<{ ok: boolean }>(`/admin/contests/${id}`)
+  return adminRequest<{ ok: boolean }>(`/admin/contests/${id}`, { method: 'DELETE' })
 }
 
 export function listUsers() {
-  return api.get<{ ok: boolean; users: AdminUser[] }>('/admin/users')
+  return adminRequest<{ ok: boolean; users: AdminUser[] }>('/admin/users')
 }
 
-/* ✅ handle both `entries` and `leaderboard` safely */
 export async function getContestLeaderboard(id: string) {
-  const res = await api.get<{
+  const res = await adminRequest<{
     ok: boolean
     leaderboard?: LeaderboardEntry[]
     entries?: LeaderboardEntry[]
