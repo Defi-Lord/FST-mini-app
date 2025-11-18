@@ -1,13 +1,18 @@
 // src/pages_ConnectWallet.tsx
-import React, { useEffect, useMemo, useRef, useState } from 'react'
-import type { FC } from 'react'
-import { API_BASE as API_BASE_CONFIG, setToken } from '../api' // keep path as requested
+import React from "react";
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 type Props = {
   onBack?: () => void
   onConnected: (address: string) => void
 }
 
+/** Backend API base (uses Vite env if present, falls back to localhost) */
+const API_BASE =
+  (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API_BASE) ||
+  'http://localhost:4000'
+
+/** Enforce nonce-sign on connect to get JWT */
 const SIGN_ON_CONNECT = true
 
 declare global {
@@ -22,7 +27,6 @@ declare global {
 }
 
 type WalletId = 'phantom' | 'backpack' | 'solflare' | 'exodus' | 'other'
-
 type WalletItem = {
   id: WalletId
   name: string
@@ -34,46 +38,41 @@ type WalletItem = {
   off?: ((ev: string, fn: (...args: any[]) => void) => void) | undefined
 }
 
-const safeGetSaved = (): string | null => {
-  try {
-    return localStorage.getItem('sol_wallet')
-  } catch {
-    return null
-  }
-}
-
+const safeGetSaved = () => { try { return localStorage.getItem('sol_wallet') } catch { return null } }
 const safeSetSaved = (addr: string | null) => {
   try {
     if (!addr) localStorage.removeItem('sol_wallet')
     else localStorage.setItem('sol_wallet', addr)
   } catch {}
 }
+const setJWT = (token: string | null) => {
+  try {
+    if (!token) localStorage.removeItem('fst_jwt')
+    else localStorage.setItem('fst_jwt', token)
+  } catch {}
+}
 
 function toB58(pk: any): string | null {
-  try {
-    if (!pk) return null
-    return pk?.toBase58?.() ?? pk?.toString?.() ?? null
-  } catch {
-    return null
-  }
+  try { return pk?.toBase58?.() ?? pk?.toString?.() ?? null } catch { return null }
 }
 
-function u8ToBase64(u8: Uint8Array) {
-  let binary = ''
-  for (let i = 0; i < u8.length; i++) binary += String.fromCharCode(u8[i])
-  return btoa(binary)
+function toBase64(u8: Uint8Array) {
+  let s = ''
+  for (let i = 0; i < u8.length; i++) s += String.fromCharCode(u8[i])
+  return btoa(s)
 }
 
-const isiOS = () => (typeof navigator !== 'undefined' ? /iPhone|iPad|iPod/i.test(navigator.userAgent) : false)
-const isPhantomInApp = () => typeof window !== 'undefined' && !!(window.solana && (window.solana.isPhantom || window.phantom?.solana))
+/** iOS + Phantom helpers */
+const isiOS = () => /iPhone|iPad|iPod/i.test(navigator.userAgent)
+const isPhantomInApp = () => !!(window.solana && (window.solana.isPhantom || window.phantom?.solana))
 const phantomBrowseLink = () => {
   const url = typeof window !== 'undefined' ? window.location.href : ''
   return `https://phantom.app/ul/browse/${encodeURIComponent(url)}`
 }
 
-// Backend calls
+/** Backend calls */
 async function fetchNonce(walletAddress: string) {
-  const res = await fetch(`${API_BASE_CONFIG}/auth/nonce`, {
+  const res = await fetch(`${API_BASE}/auth/nonce`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ walletAddress }),
@@ -82,53 +81,43 @@ async function fetchNonce(walletAddress: string) {
   return res.json() as Promise<{ nonce: string; message: string }>
 }
 
-async function verifySignature(payload: { walletAddress: string; nonce: string; signature: string }) {
-  const res = await fetch(`${API_BASE_CONFIG}/auth/verify`, {
+async function verifySignature(payload: { walletAddress: string, nonce: string, signature: string }) {
+  const res = await fetch(`${API_BASE}/auth/verify`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   })
   if (!res.ok) {
     let err = ''
-    try {
-      err = (await res.json()).error
-    } catch {}
+    try { err = (await res.json()).error } catch {}
     throw new Error(`Verify failed: ${res.status} ${err}`)
   }
   return res.json() as Promise<{ token: string }>
 }
 
+/** Sign + verify flow (server returns the exact message to sign) */
 async function signAndVerify(provider: any, walletAddress: string) {
+  // 1) get nonce + message (message must match server; do not hardcode)
   const { nonce, message } = await fetchNonce(walletAddress)
 
+  // 2) sign with wallet
   const enc = new TextEncoder()
-  if (!provider?.signMessage) throw new Error('Wallet cannot sign messages')
+  if (!provider?.signMessage) {
+    throw new Error('This wallet cannot sign messages. Enable "Message signing" in wallet settings.')
+  }
+  // Some wallets return {signature}, others a Uint8Array directly — normalize:
+  const signed = await provider.signMessage(enc.encode(message), 'utf8')
+  const rawSig: Uint8Array =
+    signed?.signature instanceof Uint8Array ? signed.signature : new Uint8Array(signed)
+  const signatureBase64 = toBase64(rawSig)
 
-  const signed = await provider.signMessage(enc.encode(message), 'utf8').catch(async () => {
-    return await provider.signMessage(enc.encode(message)).catch(err => { throw err })
-  })
-
-  let signatureBase64: string | null = null
-
-  if (!signed) throw new Error('Empty signature from wallet')
-
-  if (typeof signed === 'string') signatureBase64 = signed
-  else if (signed instanceof Uint8Array) signatureBase64 = u8ToBase64(signed)
-  else if (typeof signed === 'object') {
-    const sig = signed.signature ?? signed.sig ?? signed?.data
-    if (!sig) signatureBase64 = u8ToBase64(new Uint8Array(signed as any))
-    else if (typeof sig === 'string') signatureBase64 = sig
-    else signatureBase64 = u8ToBase64(new Uint8Array(sig))
-  } else signatureBase64 = u8ToBase64(new Uint8Array(signed as any))
-
-  if (!signatureBase64) throw new Error('Failed to obtain normalized signature')
-
+  // 3) verify with server -> returns JWT
   const { token } = await verifySignature({ walletAddress, nonce, signature: signatureBase64 })
-  setToken(token)
+  setJWT(token)
   return token
 }
 
-const ConnectWallet: FC<Props> = ({ onBack, onConnected }) => {
+export default function ConnectWallet({ onBack, onConnected }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [connectingId, setConnectingId] = useState<WalletId | null>(null)
   const [detectedNote, setDetectedNote] = useState<string | null>(null)
@@ -141,12 +130,10 @@ const ConnectWallet: FC<Props> = ({ onBack, onConnected }) => {
   const didAuto = useRef(false)
   const listenersRef = useRef<{ [k: string]: (...args: any[]) => void }>({})
 
+  // Discover wallets
   const providers = useMemo<WalletItem[]>(() => {
-    if (typeof window === 'undefined') return []
-
     const list: WalletItem[] = []
 
-    // Phantom
     const phantom = window.phantom?.solana || (window.solana?.isPhantom ? window.solana : null)
     list.push({
       id: 'phantom',
@@ -166,7 +153,6 @@ const ConnectWallet: FC<Props> = ({ onBack, onConnected }) => {
       },
     })
 
-    // Backpack
     const backpack = window.backpack
     list.push({
       id: 'backpack',
@@ -186,7 +172,6 @@ const ConnectWallet: FC<Props> = ({ onBack, onConnected }) => {
       },
     })
 
-    // Solflare
     const solflare = window.solflare
     list.push({
       id: 'solflare',
@@ -206,7 +191,6 @@ const ConnectWallet: FC<Props> = ({ onBack, onConnected }) => {
       },
     })
 
-    // Exodus
     const exodus = window.exodus?.solana
     list.push({
       id: 'exodus',
@@ -230,7 +214,7 @@ const ConnectWallet: FC<Props> = ({ onBack, onConnected }) => {
     try {
       const std = window.wallets?.get?.() || []
       const other = std.find((w: any) =>
-        !['phantom', 'backpack', 'solflare', 'exodus'].some(k => (w.name || '').toLowerCase().includes(k))
+        !['phantom','backpack','solflare','exodus'].some(k => (w.name || '').toLowerCase().includes(k))
       )
       if (other) {
         list.push({
@@ -253,11 +237,13 @@ const ConnectWallet: FC<Props> = ({ onBack, onConnected }) => {
     return list
   }, [])
 
+  // UI note
   useEffect(() => {
     const installed = providers.filter(p => p.installed).map(p => p.name)
     setDetectedNote(installed.length ? `Detected: ${installed.join(' • ')}` : 'No wallet detected yet on this device.')
   }, [providers])
 
+  // Provider event wiring
   const attachProviderEvents = (prov: any, walletId: WalletId) => {
     detachProviderEvents()
     currentProviderRef.current = prov
@@ -265,7 +251,7 @@ const ConnectWallet: FC<Props> = ({ onBack, onConnected }) => {
     const onAccount = (pk: any) => {
       const addr = toB58(pk)
       if (!addr) {
-        setToken('')
+        setJWT(null)
         safeSetSaved(null)
         setConnectedAddr(null)
         setConnectedId(null)
@@ -277,7 +263,7 @@ const ConnectWallet: FC<Props> = ({ onBack, onConnected }) => {
       onConnected(addr)
     }
     const onDisconnect = () => {
-      setToken('')
+      setJWT(null)
       safeSetSaved(null)
       setConnectedAddr(null)
       setConnectedId(null)
@@ -311,6 +297,7 @@ const ConnectWallet: FC<Props> = ({ onBack, onConnected }) => {
     currentProviderRef.current = null
   }
 
+  // Auto reconnect (silent)
   useEffect(() => {
     if (didAuto.current) return
     didAuto.current = true
@@ -331,26 +318,34 @@ const ConnectWallet: FC<Props> = ({ onBack, onConnected }) => {
             safeSetSaved(address)
             setConnectedAddr(address)
             setConnectedId(w.id)
+
             if (SIGN_ON_CONNECT) {
               try {
                 setStatus('Refreshing session…')
                 await signAndVerify(provider, address)
-              } catch {}
-              finally { setStatus('') }
+              } catch {
+                // ignore; user will sign manually
+              } finally {
+                setStatus('')
+              }
             }
+
             onConnected(address)
             return
           }
         } catch {}
       }
     })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [providers])
 
+  // Core connect flow
   const onPick = async (w: WalletItem) => {
     setError(null)
     setConnectingId(w.id)
     setStatus('')
     try {
+      // iPhone: open this page inside Phantom first so the approval sheet appears
       if (w.id === 'phantom' && isiOS() && !isPhantomInApp()) {
         window.location.href = phantomBrowseLink()
         return
@@ -368,9 +363,14 @@ const ConnectWallet: FC<Props> = ({ onBack, onConnected }) => {
 
       if (SIGN_ON_CONNECT) {
         setStatus('Verifying ownership…')
-        try { await signAndVerify(provider, address) }
-        catch (e: any) { throw new Error(e?.message || 'Signature was rejected') }
-      } else setToken('')
+        try {
+          await signAndVerify(provider, address)
+        } catch (e: any) {
+          throw new Error(e?.message || 'Signature was rejected — cannot continue.')
+        }
+      } else {
+        setJWT(null) // no auth session if not signing
+      }
 
       attachProviderEvents(provider, w.id)
       safeSetSaved(address)
@@ -386,10 +386,14 @@ const ConnectWallet: FC<Props> = ({ onBack, onConnected }) => {
     }
   }
 
+  // Disconnect
   const onDisconnectClick = async () => {
-    try { await currentProviderRef.current?.disconnect?.() } catch {}
+    try {
+      const prov = currentProviderRef.current
+      await prov?.disconnect?.()
+    } catch {}
     detachProviderEvents()
-    setToken('')
+    setJWT(null)
     safeSetSaved(null)
     setConnectedAddr(null)
     setConnectedId(null)
@@ -398,6 +402,7 @@ const ConnectWallet: FC<Props> = ({ onBack, onConnected }) => {
   return (
     <div className="screen">
       <Style />
+
       <div className="cw-wrap">
         <div className="cw-top">
           {onBack && <button className="cw-back" onClick={onBack} aria-label="Back">←</button>}
@@ -414,23 +419,34 @@ const ConnectWallet: FC<Props> = ({ onBack, onConnected }) => {
             <div>✓ One-tap reconnect next time</div>
           </div>
 
-          {connectedAddr && (
+          {connectedAddr ? (
             <div className="cw-connected">
               <div className="addr-tag">
-                Connected as <strong>{connectedAddr.slice(0, 6)}…{connectedAddr.slice(-4)}</strong>
+                Connected as <strong>{connectedAddr.slice(0,6)}…{connectedAddr.slice(-4)}</strong>
               </div>
               <div className="connected-actions">
-                <button onClick={() => navigator.clipboard?.writeText(connectedAddr)}>Copy Address</button>
+                <button onClick={() => { navigator.clipboard?.writeText(connectedAddr) }}>Copy Address</button>
                 <button onClick={onDisconnectClick}>Disconnect</button>
               </div>
             </div>
-          )}
+          ) : null}
         </div>
 
         {isiOS() && !isPhantomInApp() && (
           <div className="cw-card" style={{ margin: '8px 0', textAlign: 'center' }}>
-            <p style={{ margin: 0, opacity: 0.9 }}>On iPhone, connecting works best inside the Phantom app.</p>
-            <a href={phantomBrowseLink()} className="btn" style={{ display: 'inline-block', marginTop: 8, padding: '10px 14px', borderRadius: 12, border: '1px solid rgba(255,255,255,0.2)' }}>Open this page in Phantom</a>
+            <p style={{ margin: 0, opacity: .9 }}>
+              On iPhone, connecting works best inside the Phantom app.
+            </p>
+            <a
+              href={phantomBrowseLink()}
+              className="btn"
+              style={{
+                display:'inline-block', marginTop:8, padding:'10px 14px',
+                borderRadius:12, border:'1px solid rgba(255,255,255,0.2)'
+              }}
+            >
+              Open this page in Phantom
+            </a>
           </div>
         )}
 
@@ -438,7 +454,11 @@ const ConnectWallet: FC<Props> = ({ onBack, onConnected }) => {
 
         <div className="cw-grid">
           {providers.map(w => (
-            <button key={w.id} className={`cw-wallet ${w.installed ? 'is-live' : 'is-ghost'} ${connectingId === w.id ? 'is-loading' : ''}`} onClick={() => onPick(w)}>
+            <button
+              key={w.id}
+              className={`cw-wallet ${w.installed ? 'is-live' : 'is-ghost'} ${connectingId === w.id ? 'is-loading' : ''}`}
+              onClick={() => onPick(w)}
+            >
               <span className="cw-icon">{w.icon}</span>
               <span className="cw-meta">
                 <span className="cw-name">{w.name}</span>
@@ -460,4 +480,120 @@ const ConnectWallet: FC<Props> = ({ onBack, onConnected }) => {
   )
 }
 
-export default ConnectWallet
+/* ---------- Icons (inline) ---------- */
+function IconPhantom() {
+  return (
+    <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden>
+      <circle cx="12" cy="12" r="10" />
+      <circle cx="9.5" cy="11" r="1.4" fill="#fff" />
+      <circle cx="14.5" cy="11" r="1.4" fill="#fff" />
+    </svg>
+  )
+}
+function IconBackpack() {
+  return (
+    <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden>
+      <rect x="3" y="5" width="18" height="14" rx="4" />
+      <rect x="7" y="8.5" width="10" height="4" rx="2" fill="#fff" />
+    </svg>
+  )
+}
+function IconSolflare() {
+  return (
+    <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 6l4 6-4 6-4-6 4-6z" fill="#fff" />
+    </svg>
+  )
+}
+function IconExodus() {
+  return (
+    <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden>
+      <rect x="4" y="4" width="16" height="16" rx="4" />
+      <path d="M8 8l8 8M16 8l-8 8" stroke="#fff" strokeWidth="1.8" strokeLinecap="round"/>
+    </svg>
+  )
+}
+function IconGeneric() {
+  return (
+    <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M8 12h8M12 8v8" stroke="#fff" strokeWidth="1.6" strokeLinecap="round"/>
+    </svg>
+  )
+}
+
+/* ---------- Styles (kept from your original, with neutral fills so they match your theme) ---------- */
+function Style() {
+  return (
+    <style>{`
+      .cw-wrap { max-width: 920px; margin: 0 auto; padding: 14px; }
+
+      .cw-top { display:flex; align-items:center; justify-content:space-between; margin-bottom: 10px; }
+      .cw-back {
+        width:36px; height:36px; border-radius:10px; border:1px solid rgba(255,255,255,0.16);
+        background:linear-gradient(135deg, rgba(255,255,255,0.10), rgba(255,255,255,0.05)); color:#fff;
+      }
+      .cw-title { margin: 0; }
+
+      .cw-card {
+        border:1px solid rgba(255,255,255,0.16);
+        background:linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.04));
+        border-radius:16px; padding:16px; backdrop-filter: blur(8px);
+      }
+      .cw-hero { margin: 6px 0 12px; text-align: center; }
+      .cw-hero h1 { margin:0 0 6px; font-size: clamp(22px, 4.8vw, 38px); }
+      .cw-hero p { margin:0 0 10px; color: rgba(255,255,255,0.85); }
+      .cw-bullets { display:grid; gap:6px; color: rgba(255,255,255,0.9); justify-content:center; }
+
+      .cw-connected {
+        display:flex; align-items:center; justify-content:center; gap:10px; margin-top:10px; flex-wrap:wrap;
+      }
+      .addr-tag {
+        padding: 8px 10px; border-radius: 999px; background: #0b1220;
+        border: 1px solid rgba(255,255,255,0.06); font-family: monospace;
+      }
+      .connected-actions button { margin-left: 6px; }
+
+      .cw-note { margin: 8px 0 12px; text-align: center; }
+
+      .cw-grid { display:grid; gap:10px; margin: 10px 0 12px; }
+      .cw-wallet {
+        display:flex; align-items:center; gap:12px; width:100%;
+        padding:12px; border-radius:14px; position:relative; overflow:hidden;
+        border:1px solid rgba(255,255,255,0.16);
+        background: linear-gradient(135deg, rgba(255,255,255,0.10), rgba(255,255,255,0.05));
+        transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+        text-align:left; color:#fff;
+      }
+      .cw-wallet.is-live:hover {
+        transform: translateY(-1px);
+        border-color: rgba(255,255,255,0.28);
+        box-shadow: 0 14px 30px rgba(99,102,241,0.30), inset 0 0 60px rgba(255,255,255,0.06);
+      }
+      .cw-wallet.is-ghost { opacity: .9; }
+      .cw-wallet.is-ghost .cw-sub { opacity: .85; }
+      .cw-wallet.is-loading { opacity: .6; pointer-events:none; }
+
+      .cw-icon { width:34px; height:34px; display:grid; place-items:center; border-radius:10px;
+        background: radial-gradient(circle at 30% 30%, rgba(99,102,241,0.35), rgba(236,72,153,0.35));
+      }
+      .cw-meta { display:flex; flex-direction:column; gap:2px; }
+      .cw-name { font-weight:900; letter-spacing:.2px; }
+      .cw-sub { font-size:12px; opacity:.9; }
+      .cw-chevron { margin-left:auto; font-weight:900; opacity:.8; }
+
+      .cw-error {
+        color: #ffb4b4;
+        background: rgba(255, 0, 0, 0.12);
+        border: 1px solid rgba(255, 0, 0, 0.22);
+        border-radius: 12px;
+        padding: 10px 12px;
+        margin: 8px 0 12px;
+        text-align:center;
+      }
+
+      .cw-secure { text-align:center; opacity:.85; }
+    `}</style>
+  )
+}
