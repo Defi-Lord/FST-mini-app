@@ -13,6 +13,7 @@ export function getToken() {
     return ''
   }
 }
+
 export function setToken(token: string) {
   try {
     if (!token) localStorage.removeItem('auth_token')
@@ -24,12 +25,15 @@ export function setToken(token: string) {
 function buildHeaders(init?: RequestInit): Headers {
   const headers = new Headers(init?.headers || {})
   const token = getToken()
+
   if (token && !headers.has('Authorization')) {
     headers.set('Authorization', `Bearer ${token}`)
   }
+
   if (!headers.has('Content-Type') && init?.body) {
     headers.set('Content-Type', 'application/json')
   }
+
   return headers
 }
 
@@ -40,10 +44,13 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     ...init,
     headers: buildHeaders(init),
   })
+
   if (res.ok) {
     if (res.status === 204) return undefined as unknown as T
     return (await res.json()) as T
   }
+
+  // Parse error message
   let message = `HTTP ${res.status}`
   try {
     const txt = await res.text()
@@ -56,6 +63,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
       }
     }
   } catch {}
+
   throw new Error(message)
 }
 
@@ -63,18 +71,21 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 export const api = {
   get: <T>(p: string, init?: RequestInit) =>
     request<T>(p, { ...(init || {}), method: 'GET' }),
+
   post: <T>(p: string, body?: unknown, init?: RequestInit) =>
     request<T>(p, {
       ...(init || {}),
       method: 'POST',
       body: body ? JSON.stringify(body) : undefined,
     }),
+
   patch: <T>(p: string, body?: unknown, init?: RequestInit) =>
     request<T>(p, {
       ...(init || {}),
       method: 'PATCH',
       body: body ? JSON.stringify(body) : undefined,
     }),
+
   delete: <T>(p: string, init?: RequestInit) =>
     request<T>(p, { ...(init || {}), method: 'DELETE' }),
 }
@@ -147,18 +158,27 @@ export type LeaderboardEntry = {
   rank?: number
 }
 
-// ✅ Explicit admin request helper
-async function adminRequest<T>(path: string, init?: RequestInit) {
+/** ================== ADMIN REQUEST FIX ================== */
+async function adminRequest<T>(path: string, init: RequestInit = {}) {
   const token = getToken()
+
   if (!token) throw new Error('Unauthorized: No admin token found')
-  const headers = new Headers(init?.headers || {})
+
+  // Admin header override must MERGE instead of replacing
+  const headers = new Headers(init.headers || {})
   headers.set('Authorization', `Bearer ${token}`)
-  if (!headers.has('Content-Type') && init?.body) {
+
+  if (!headers.has('Content-Type') && init.body) {
     headers.set('Content-Type', 'application/json')
   }
-  return request<T>(path, { ...init, headers })
+
+  return request<T>(path, {
+    ...init,
+    headers,
+  })
 }
 
+/* Admin endpoints */
 export function adminHealth() {
   return adminRequest<{ ok: boolean; status?: string }>('/health')
 }
@@ -199,7 +219,9 @@ export function toggleContest(id: string, open: boolean) {
 }
 
 export function deleteContest(id: string) {
-  return adminRequest<{ ok: boolean }>(`/admin/contests/${id}`, { method: 'DELETE' })
+  return adminRequest<{ ok: boolean }>(`/admin/contests/${id}`, {
+    method: 'DELETE',
+  })
 }
 
 export function listUsers() {
