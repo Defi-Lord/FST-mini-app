@@ -50,7 +50,6 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     return (await res.json()) as T
   }
 
-  // Parse error message
   let message = `HTTP ${res.status}`
   try {
     const txt = await res.text()
@@ -105,7 +104,11 @@ export async function authVerify(address: string, signature: string, message: st
     '/auth/verify',
     { address, signature, message }
   )
-  if (res.ok && res.token) setToken(res.token)
+
+  if (res.ok && res.token) {
+    setToken(res.token)
+  }
+
   return res
 }
 
@@ -116,55 +119,18 @@ export function authIntrospect() {
 export async function getMe() {
   const res = await authIntrospect()
   if (!res.ok) throw new Error(res.error || 'Unauthorized')
+
   return { user: { id: res.wallet, role: res.role } }
 }
 
 /* =======================================================
-   ADMIN TYPES + ENDPOINTS
+   ADMIN REQUESTS
    ======================================================= */
-export type Contest = {
-  id?: string
-  _id?: string
-  name?: string
-  title?: string
-  realm?: string
-  type?: string
-  entryFee?: number
-  registrationOpen?: boolean
-  active?: boolean
-  participants?: any[]
-  createdAt?: string
-  updatedAt?: string
-  startAt?: string
-  endAt?: string
-}
-
-export type AdminUser = {
-  id?: string
-  _id?: string
-  wallet: string
-  role: string
-  displayName?: string
-  createdAt?: string
-  updatedAt?: string
-}
-
-export type LeaderboardEntry = {
-  userId?: string
-  wallet?: string
-  displayName?: string
-  score?: number
-  points?: number
-  rank?: number
-}
-
-/** ================== ADMIN REQUEST FIX ================== */
 async function adminRequest<T>(path: string, init: RequestInit = {}) {
   const token = getToken()
 
   if (!token) throw new Error('Unauthorized: No admin token found')
 
-  // Admin header override must MERGE instead of replacing
   const headers = new Headers(init.headers || {})
   headers.set('Authorization', `Bearer ${token}`)
 
@@ -184,19 +150,10 @@ export function adminHealth() {
 }
 
 export function listContests() {
-  return adminRequest<{ ok?: boolean; contests: Contest[] }>('/admin/contests')
+  return adminRequest<{ ok?: boolean; contests: any[] }>('/admin/contests')
 }
 
-export function createContest(data: {
-  name?: string
-  title?: string
-  realm?: string
-  type?: string
-  entryFee?: number
-  registrationOpen?: boolean
-  startAt?: string
-  endAt?: string
-}) {
+export function createContest(data: any) {
   const payload = {
     ...data,
     name: data.name ?? data.title ?? '',
@@ -205,7 +162,7 @@ export function createContest(data: {
     startAt: data.startAt ?? null,
     endAt: data.endAt ?? null,
   }
-  return adminRequest<{ ok: boolean; contest: Contest }>('/admin/contests/create', {
+  return adminRequest<{ ok: boolean; contest: any }>('/admin/contests/create', {
     method: 'POST',
     body: JSON.stringify(payload),
   })
@@ -225,18 +182,13 @@ export function deleteContest(id: string) {
 }
 
 export function listUsers() {
-  return adminRequest<{ ok: boolean; users: AdminUser[] }>('/admin/users')
+  return adminRequest<{ ok: boolean; users: any[] }>('/admin/users')
 }
 
 export async function getContestLeaderboard(id: string) {
-  const res = await adminRequest<{
-    ok: boolean
-    leaderboard?: LeaderboardEntry[]
-    entries?: LeaderboardEntry[]
-  }>(`/admin/contests/${id}/leaderboard`)
-
+  const res = await adminRequest<any>(`/admin/contests/${id}/leaderboard`)
   const leaderboard = res.leaderboard ?? res.entries ?? []
-  return { ok: res.ok, leaderboard, entries: leaderboard }
+  return { ok: res.ok, leaderboard }
 }
 
 /* =======================================================
@@ -247,7 +199,7 @@ export function getUserHistory() {
 }
 
 /* =======================================================
-   CONTESTS (JOIN / PAID JOIN)
+   CONTEST (JOIN)
    ======================================================= */
 export function joinContest(contestId: string, team?: any) {
   return api.post<{ ok: boolean; created?: boolean }>(
@@ -257,20 +209,11 @@ export function joinContest(contestId: string, team?: any) {
 }
 
 export function startPaidJoin(contestId: string) {
-  return api.post<{
-    ok: boolean
-    to: string
-    amountLamports: number
-    memo?: string
-    created?: boolean
-  }>(`/contests/${contestId}/join/start`)
+  return api.post<any>(`/contests/${contestId}/join/start`)
 }
 
 export function verifyPaidJoin(contestId: string, signature: string) {
-  return api.post<{ ok: boolean; created?: boolean }>(
-    `/contests/${contestId}/join/verify`,
-    { signature }
-  )
+  return api.post<any>(`/contests/${contestId}/join/verify`, { signature })
 }
 
 /* =======================================================
@@ -287,7 +230,7 @@ export function fetchElementSummary(id: string | number) {
 }
 
 /* =======================================================
-   UTILS
+   LOGOUT
    ======================================================= */
 export function signOut() {
   try {

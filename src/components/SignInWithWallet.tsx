@@ -10,64 +10,93 @@ type Props = {
   onToken?: (token: string) => void;
 };
 
+/** Convert Uint8Array → Base64 safely */
 function u8ToBase64(u8: Uint8Array) {
-  // browser-friendly base64 for Uint8Array
   let binary = "";
-  const len = u8.length;
-  for (let i = 0; i < len; i++) binary += String.fromCharCode(u8[i]);
+  for (let i = 0; i < u8.length; i++) binary += String.fromCharCode(u8[i]);
   return btoa(binary);
 }
 
 export default function SignInWithWallet({ onConnected, onToken }: Props) {
   const wallet = useWallet();
   const { setVisible } = useWalletModal();
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
+  /** Get challenge from backend (supports /auth/challenge or /auth/nonce) */
+  const getChallenge = async (address: string): Promise<string> => {
+    try {
+      const res = await api.post("/auth/challenge", { address });
+      if (res && (res as any).challenge) {
+        return (res as any).challenge;
+      }
+    } catch {
+      /* will fallback to /auth/nonce */
+    }
+
+    // fallback route your backend supports
+    const fallback = await api.post("/auth/nonce", { walletAddress: address });
+    return (
+      (fallback as any).message ||
+      (fallback as any).nonce ||
+      ""
+    );
+  };
+
+  /** Normalize signature returns from various wallets */
+  const normalizeSignature = (raw: any): string => {
+    if (!raw) throw new Error("Empty signature returned.");
+
+    if (typeof raw === "string") return raw; // already base64 or string
+
+    if (raw instanceof Uint8Array) return u8ToBase64(raw);
+
+    if (raw.signature) {
+      const sig = raw.signature;
+      if (sig instanceof Uint8Array) return u8ToBase64(sig);
+      if (typeof sig === "string") return sig;
+      return u8ToBase64(new Uint8Array(sig));
+    }
+
+    // fallback coercion attempt
+    try {
+      return u8ToBase64(new Uint8Array(raw));
+    } catch {
+      throw new Error("Unable to normalize wallet signature.");
+    }
+  };
+
+  /** Connect Wallet button */
   const handleConnect = async () => {
     setError(null);
+
     try {
-      // If the adapter requires selection, connect() will open the injected prompt or fail.
       await wallet.connect();
     } catch (err: any) {
       const name = err?.name || err?.constructor?.name || "";
+
       if (name.includes("WalletNotSelected")) {
-        // open the modal so user can pick a wallet
         setVisible(true);
         setError("Please select a wallet from the modal.");
       } else {
         setError("Failed to connect wallet. Try again.");
       }
-      console.warn("Wallet connection error:", err);
+      return;
     }
   };
 
-  const getChallenge = async (address: string) => {
-    // Try the common endpoints your backend might expose: /auth/challenge or /auth/nonce
-    try {
-      const res = await api.post<{ ok: boolean; challenge: string }>("/auth/challenge", {
-        address,
-      });
-      if (res && (res as any).challenge) return (res as any).challenge;
-    } catch (e) {
-      // fallthrough to try /auth/nonce
-    }
-    // fallback
-    const fallback = await api.post<{ nonce: string; message: string }>("/auth/nonce", {
-      walletAddress: address,
-    });
-    return (fallback as any).message || (fallback as any).nonce;
-  };
-
+  /** Sign-in flow */
   const handleSignIn = async () => {
     setError(null);
+
     if (!wallet.publicKey) {
       setError("Please connect your wallet first.");
       return;
     }
-    if (!wallet.signMessage && !wallet.signTransaction) {
-      setError("Your wallet does not support message signing. Use Phantom or a compatible wallet.");
+    if (!wallet.signMessage) {
+      setError("This wallet cannot sign messages. Use Phantom or a compatible wallet.");
       return;
     }
 
@@ -75,69 +104,48 @@ export default function SignInWithWallet({ onConnected, onToken }: Props) {
     setSuccess(false);
 
     try {
-      // 1️⃣ Get challenge message from backend (supports both /auth/challenge and /auth/nonce)
-      const challenge = await getChallenge(wallet.publicKey.toBase58());
+      const address = wallet.publicKey.toBase58();
+
+      // 1) fetch challenge
+      const challenge = await getChallenge(address);
       if (!challenge) throw new Error("No challenge received from server.");
 
-      // 2️⃣ Sign challenge
-      const encodedMsg = new TextEncoder().encode(challenge);
+      // 2) sign challenge
+      const encoded = new TextEncoder().encode(challenge);
+      const rawSig = await wallet.signMessage(encoded);
+      const signatureBase64 = normalizeSignature(rawSig);
 
-      // Many adapters return either Uint8Array, { signature: Uint8Array }, or a string
-      const rawSig = await (wallet.signMessage as any)(encodedMsg);
-      let signatureBase64: string;
-      if (!rawSig && typeof rawSig !== "string") {
-        throw new Error("Signature failed or returned empty value.");
-      }
-      if (typeof rawSig === "string") {
-        // If wallet returned a base64/string signature already
-        signatureBase64 = rawSig;
-      } else if (rawSig instanceof Uint8Array) {
-        signatureBase64 = u8ToBase64(rawSig);
-      } else if (typeof rawSig === "object" && (rawSig as any).signature) {
-        const sig = (rawSig as any).signature;
-        if (sig instanceof Uint8Array) signatureBase64 = u8ToBase64(sig);
-        else if (typeof sig === "string") signatureBase64 = sig;
-        else signatureBase64 = u8ToBase64(new Uint8Array(sig));
-      } else {
-        // Try to coerce
-        try {
-          signatureBase64 = u8ToBase64(new Uint8Array(rawSig));
-        } catch {
-          throw new Error("Unable to normalize wallet signature.");
-        }
-      }
+      // 3) verify on backend
+      let verifyToken: string | undefined;
 
-      // 3️⃣ Verify signature with backend
-      // Try both possible verify shapes if your backend expects different fields
       try {
-        const verifyRes = await api.post<{ ok: boolean; token: string }>("/auth/verify", {
-          address: wallet.publicKey.toBase58(),
+        const res = await api.post("/auth/verify", {
+          address,
           signature: signatureBase64,
           message: challenge,
         });
-
-        const token = (verifyRes as any).token;
-        if (!token) throw new Error("No token from server");
-        localStorage.setItem("auth_token", token);
-        onToken?.(token);
-        onConnected(wallet.publicKey.toBase58());
-        setSuccess(true);
-      } catch (e) {
-        // If /auth/verify fails, try the alternative shape the backend might expect:
-        const verifyRes = await api.post<{ ok: boolean; token: string }>("/auth/verify", {
-          walletAddress: wallet.publicKey.toBase58(),
+        verifyToken = (res as any).token;
+      } catch {
+        // fallback shape
+        const res = await api.post("/auth/verify", {
+          walletAddress: address,
           signature: signatureBase64,
           nonce: challenge,
         });
-        const token = (verifyRes as any).token;
-        if (!token) throw new Error("No token from server (alt)");
-        localStorage.setItem("auth_token", token);
-        onToken?.(token);
-        onConnected(wallet.publicKey.toBase58());
-        setSuccess(true);
+        verifyToken = (res as any).token;
       }
+
+      if (!verifyToken) throw new Error("Server did not return a token.");
+
+      // save token
+      localStorage.setItem("auth_token", verifyToken);
+      onToken?.(verifyToken);
+
+      // notify parent
+      onConnected(address);
+
+      setSuccess(true);
     } catch (err: any) {
-      console.error("Sign-in failed:", err);
       setError(err?.message || "Sign-in failed. Please try again.");
     } finally {
       setLoading(false);
@@ -162,7 +170,7 @@ export default function SignInWithWallet({ onConnected, onToken }: Props) {
         </motion.h1>
 
         <p className="text-gray-300 text-sm mb-8">
-          Securely authenticate using your Solana wallet. We’ll never request private keys or sensitive info.
+          Securely authenticate using your Solana wallet. We never request private keys.
         </p>
 
         {!wallet.connected ? (
@@ -188,13 +196,21 @@ export default function SignInWithWallet({ onConnected, onToken }: Props) {
         )}
 
         {error && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-red-400 text-sm mt-4">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="text-red-400 text-sm mt-4"
+          >
             {error}
           </motion.div>
         )}
 
         {success && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-emerald-400 text-sm mt-4">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="text-emerald-400 text-sm mt-4"
+          >
             ✅ Successfully signed in!
           </motion.div>
         )}
