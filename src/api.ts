@@ -1,5 +1,30 @@
 // src/api.ts
 
+/** ================= Type Definitions (ADDED) ================= */
+export interface Contest {
+  id: string
+  name: string
+  type: string
+  realm?: string
+  open?: boolean
+  startAt?: string | null
+  endAt?: string | null
+}
+
+export interface AdminUser {
+  id: string
+  wallet: string
+  role: string
+}
+
+export interface LeaderboardEntry {
+  id: string
+  userId: string
+  username?: string
+  points?: number
+  rank?: number
+}
+
 /** ================= Base Config ================= */
 export const API_BASE =
   (import.meta as any).env?.VITE_API_BASE ||
@@ -73,14 +98,14 @@ export const api = {
 
   post: <T>(p: string, body?: unknown, init?: RequestInit) =>
     request<T>(p, {
-      ...(init || {}),
+      ...(init || {}), 
       method: 'POST',
       body: body ? JSON.stringify(body) : undefined,
     }),
 
   patch: <T>(p: string, body?: unknown, init?: RequestInit) =>
     request<T>(p, {
-      ...(init || {}),
+      ...(init || {}), 
       method: 'PATCH',
       body: body ? JSON.stringify(body) : undefined,
     }),
@@ -150,7 +175,7 @@ export function adminHealth() {
 }
 
 export function listContests() {
-  return adminRequest<{ ok?: boolean; contests: any[] }>('/admin/contests')
+  return adminRequest<{ ok?: boolean; contests: Contest[] }>('/admin/contests')
 }
 
 export function createContest(data: any) {
@@ -162,7 +187,7 @@ export function createContest(data: any) {
     startAt: data.startAt ?? null,
     endAt: data.endAt ?? null,
   }
-  return adminRequest<{ ok: boolean; contest: any }>('/admin/contests/create', {
+  return adminRequest<{ ok: boolean; contest: Contest }>('/admin/contests/create', {
     method: 'POST',
     body: JSON.stringify(payload),
   })
@@ -182,12 +207,15 @@ export function deleteContest(id: string) {
 }
 
 export function listUsers() {
-  return adminRequest<{ ok: boolean; users: any[] }>('/admin/users')
+  return adminRequest<{ ok: boolean; users: AdminUser[] }>('/admin/users')
 }
 
 export async function getContestLeaderboard(id: string) {
-  const res = await adminRequest<any>(`/admin/contests/${id}/leaderboard`)
-  const leaderboard = res.leaderboard ?? res.entries ?? []
+  const res = await adminRequest<{ ok: boolean; leaderboard: LeaderboardEntry[] }>(
+    `/admin/contests/${id}/leaderboard`
+  )
+
+  const leaderboard = res.leaderboard ?? []
   return { ok: res.ok, leaderboard }
 }
 
