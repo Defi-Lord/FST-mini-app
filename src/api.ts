@@ -1,26 +1,34 @@
 // src/api.ts
 
-/** ================= Type Definitions (ADDED) ================= */
+/** ================= Type Definitions (UPDATED) ================= */
 export interface Contest {
   id: string
   name: string
+  title?: string           // added to match code usage
   type: string
   realm?: string
   open?: boolean
   startAt?: string | null
   endAt?: string | null
+  createdAt?: string       // added for Admin page
+  active?: boolean         // added for HomeHub and Admin
+  entryFee?: number        // added for HomeHub
 }
 
 export interface AdminUser {
   id: string
   wallet: string
   role: string
+  displayName?: string     // added for Admin page
+  createdAt?: string       // added for Admin page
+  updatedAt?: string       // added for Admin page
 }
 
 export interface LeaderboardEntry {
   id: string
   userId: string
   username?: string
+  displayName?: string     // added for Admin/HomeHub usage
   points?: number
   rank?: number
 }
@@ -116,7 +124,7 @@ export const api = {
 
 /* =======================================================
    AUTH
-   ======================================================= */
+======================================================= */
 export type IntrospectResponse = {
   ok?: boolean
   role?: string
@@ -150,7 +158,7 @@ export async function getMe() {
 
 /* =======================================================
    ADMIN REQUESTS
-   ======================================================= */
+======================================================= */
 async function adminRequest<T>(path: string, init: RequestInit = {}) {
   const token = getToken()
 
@@ -182,6 +190,7 @@ export function createContest(data: any) {
   const payload = {
     ...data,
     name: data.name ?? data.title ?? '',
+    title: data.title ?? data.name ?? '',
     type: data.type ?? 'general',
     realm: data.realm ?? 'WEEKLY',
     startAt: data.startAt ?? null,
@@ -221,14 +230,14 @@ export async function getContestLeaderboard(id: string) {
 
 /* =======================================================
    USER HISTORY
-   ======================================================= */
+======================================================= */
 export function getUserHistory() {
   return api.get<{ ok: boolean; history: any[] }>('/user/history')
 }
 
 /* =======================================================
    CONTEST (JOIN)
-   ======================================================= */
+======================================================= */
 export function joinContest(contestId: string, team?: any) {
   return api.post<{ ok: boolean; created?: boolean }>(
     `/contests/${contestId}/join`,
@@ -246,7 +255,7 @@ export function verifyPaidJoin(contestId: string, signature: string) {
 
 /* =======================================================
    FPL PROXIES
-   ======================================================= */
+======================================================= */
 export function fetchBootstrap() {
   return api.get<any>('/fpl/api/bootstrap-static/')
 }
@@ -259,7 +268,7 @@ export function fetchElementSummary(id: string | number) {
 
 /* =======================================================
    LOGOUT
-   ======================================================= */
+======================================================= */
 export function signOut() {
   try {
     localStorage.removeItem('auth_token')
