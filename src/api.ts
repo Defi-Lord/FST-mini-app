@@ -96,6 +96,12 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     }
   } catch {}
 
+  // Auto logout if token expired or invalid
+  if (res.status === 401) {
+    signOut()
+    message = message || 'Unauthorized: Token invalid or expired'
+  }
+
   throw new Error(message)
 }
 
@@ -145,15 +151,23 @@ export async function authVerify(address: string, signature: string, message: st
   return res
 }
 
-export function authIntrospect() {
-  return api.post<IntrospectResponse>('/auth/introspect')
+// Updated introspect to auto-handle invalid/expired tokens
+export async function authIntrospect(): Promise<IntrospectResponse> {
+  try {
+    return await api.post<IntrospectResponse>('/auth/introspect')
+  } catch (err: any) {
+    // If 401 occurs, clear token
+    if (err.message.includes('Unauthorized')) signOut()
+    return { ok: false, error: err.message }
+  }
 }
 
+// Updated getMe() to handle expired tokens
 export async function getMe() {
   const res = await authIntrospect()
-  if (!res.ok) throw new Error(res.error || 'Unauthorized')
+  if (!res.ok) throw new Error(res.error || 'Unauthorized. Please login again.')
 
-  return { user: { id: res.wallet, role: res.role } }
+  return { user: { id: res.wallet!, role: res.role! } }
 }
 
 /* =======================================================
@@ -161,20 +175,15 @@ export async function getMe() {
 ======================================================= */
 async function adminRequest<T>(path: string, init: RequestInit = {}) {
   const token = getToken()
-
   if (!token) throw new Error('Unauthorized: No admin token found')
 
   const headers = new Headers(init.headers || {})
   headers.set('Authorization', `Bearer ${token}`)
-
   if (!headers.has('Content-Type') && init.body) {
     headers.set('Content-Type', 'application/json')
   }
 
-  return request<T>(path, {
-    ...init,
-    headers,
-  })
+  return request<T>(path, { ...init, headers })
 }
 
 /* Admin endpoints */
@@ -223,7 +232,6 @@ export async function getContestLeaderboard(id: string) {
   const res = await adminRequest<{ ok: boolean; leaderboard: LeaderboardEntry[] }>(
     `/admin/contests/${id}/leaderboard`
   )
-
   const leaderboard = res.leaderboard ?? []
   return { ok: res.ok, leaderboard }
 }
