@@ -1,5 +1,11 @@
 import React from 'react';
-import { listContests, createContest as createContestAPI, toggleContest as toggleContestAPI, deleteContest as deleteContestAPI, Contest as APIContest } from '../api';
+import {
+  listContests,
+  createContest as createContestAPI,
+  toggleContest as toggleContestAPI,
+  deleteContest as deleteContestAPI,
+  Contest as APIContest
+} from '../api';
 
 export default function AdminContests() {
   const [list, setList] = React.useState<APIContest[]>([]);
@@ -28,7 +34,12 @@ export default function AdminContests() {
     setBusy(true);
     setErr(null);
     try {
-      await createContestAPI({ title, realm, entryFee: Number(entryFee) });
+      await createContestAPI({
+        name: title,
+        title: title,
+        realm,
+        entryFee: Number(entryFee)
+      });
       setTitle('');
       setEntryFee(0);
       await load();
@@ -65,7 +76,15 @@ export default function AdminContests() {
       <h2>Admin · Contests</h2>
       {err && <p style={{ color: 'crimson' }}>{err}</p>}
 
-      <div style={{ display: 'grid', gap: 8, border: '1px solid #ddd', padding: 12, borderRadius: 8 }}>
+      <div
+        style={{
+          display: 'grid',
+          gap: 8,
+          border: '1px solid #ddd',
+          padding: 12,
+          borderRadius: 8
+        }}
+      >
         <input placeholder="Title" value={title} onChange={e => setTitle(e.target.value)} />
         <select value={realm} onChange={e => setRealm(e.target.value)}>
           <option>FREE</option>
@@ -89,7 +108,9 @@ export default function AdminContests() {
         {list.map(c => (
           <div key={c.id} style={{ border: '1px solid #eee', padding: 12, borderRadius: 8 }}>
             <div><b>{c.title ?? c.name}</b></div>
-            <div>Realm: {c.realm ?? c.type} · Fee: {c.entryFee ?? 0} · Active: {String(c.active ?? false)}</div>
+            <div>
+              Realm: {c.realm ?? c.type} · Fee: {c.entryFee ?? 0} · Active: {String(c.active ?? false)}
+            </div>
             <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
               <button onClick={() => toggleActive(c.id, !(c.active ?? false))}>
                 {(c.active ?? false) ? 'Deactivate' : 'Activate'}
