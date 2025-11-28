@@ -59,8 +59,6 @@ function buildHeaders(init?: RequestInit): Headers {
   const headers = new Headers(init?.headers || {})
   const token = getToken()
 
-  console.log("Authorization header will be:", token ? `Bearer ${token}` : "none")
-
   if (token && !headers.has('Authorization')) {
     headers.set('Authorization', `Bearer ${token}`)
   }
@@ -182,7 +180,6 @@ export async function getMe() {
    ADMIN REQUESTS
 ======================================================= */
 async function adminRequest<T>(path: string, init: RequestInit = {}) {
-  // read the token fresh on every request
   const token = getToken()
   if (!token) throw new Error('Unauthorized: No admin token found')
 

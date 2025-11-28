@@ -12,6 +12,7 @@ import {
   type AdminUser,
   type LeaderboardEntry,
   signOut,
+  getToken,
 } from "./api";
 
 type Tab = "overview" | "contests" | "users" | "leaderboard";
@@ -20,6 +21,7 @@ export default function AdminPage({ onBack }: { onBack?: () => void }) {
   const [tab, setTab] = React.useState<Tab>("overview");
   const [health, setHealth] = React.useState<"loading" | "ok" | "bad">("loading");
   const [err, setErr] = React.useState<string | null>(null);
+  const [ready, setReady] = React.useState(false); // wait for token
 
   // contests
   const [contests, setContests] = React.useState<Contest[]>([]);
@@ -81,10 +83,21 @@ export default function AdminPage({ onBack }: { onBack?: () => void }) {
   }, []);
 
   React.useEffect(() => {
-    loadHealth();
-    loadContests();
-    loadUsers();
-  }, [loadHealth, loadContests, loadUsers]);
+    const token = getToken();
+    if (!token) {
+      signOut();
+      return;
+    }
+    setReady(true);
+  }, []);
+
+  React.useEffect(() => {
+    if (ready) {
+      loadHealth();
+      loadContests();
+      loadUsers();
+    }
+  }, [ready, loadHealth, loadContests, loadUsers]);
 
   const filteredUsers = React.useMemo(() => {
     if (!userSearch.trim()) return users;
@@ -181,6 +194,8 @@ export default function AdminPage({ onBack }: { onBack?: () => void }) {
     if (now > end) return "Closed";
     return "Inactive";
   };
+
+  if (!ready) return <p>Loading admin panel…</p>;
 
   return (
     <div className="admin-wrap">

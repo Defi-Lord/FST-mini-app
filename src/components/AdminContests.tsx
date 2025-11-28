@@ -4,7 +4,9 @@ import {
   createContest as createContestAPI,
   toggleContest as toggleContestAPI,
   deleteContest as deleteContestAPI,
-  Contest as APIContest
+  Contest as APIContest,
+  getToken,
+  signOut,
 } from '../api';
 
 export default function AdminContests() {
@@ -14,21 +16,35 @@ export default function AdminContests() {
   const [entryFee, setEntryFee] = React.useState(0);
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
+  const [ready, setReady] = React.useState(false); // Wait for token
 
   const load = React.useCallback(async () => {
     setErr(null);
+    const token = getToken();
+    if (!token) {
+      console.warn('No token found, redirecting to login...');
+      signOut();
+      return;
+    }
     try {
       const data = await listContests();
       setList(data.contests || []);
     } catch (e: any) {
+      if (e.message?.includes('Unauthorized')) signOut();
       setErr(String(e?.message || e));
       console.error('Failed to load contests:', e);
     }
   }, []);
 
   React.useEffect(() => {
-    load();
-  }, [load]);
+    const token = getToken();
+    if (token) setReady(true);
+    else signOut();
+  }, []);
+
+  React.useEffect(() => {
+    if (ready) load();
+  }, [ready, load]);
 
   const createContest = async () => {
     if (busy) return;
@@ -39,12 +55,13 @@ export default function AdminContests() {
         name: title,
         title,
         realm,
-        entryFee: Number(entryFee)
+        entryFee: Number(entryFee),
       });
       setTitle('');
       setEntryFee(0);
       await load();
     } catch (e: any) {
+      if (e.message?.includes('Unauthorized')) signOut();
       setErr(String(e?.message || e));
       console.error('Failed to create contest:', e);
     } finally {
@@ -58,6 +75,7 @@ export default function AdminContests() {
       await toggleContestAPI(id, active);
       await load();
     } catch (e: any) {
+      if (e.message?.includes('Unauthorized')) signOut();
       setErr(String(e?.message || e));
       console.error('Failed to toggle contest:', e);
     }
@@ -70,17 +88,28 @@ export default function AdminContests() {
       await deleteContestAPI(id);
       await load();
     } catch (e: any) {
+      if (e.message?.includes('Unauthorized')) signOut();
       setErr(String(e?.message || e));
       console.error('Failed to delete contest:', e);
     }
   };
+
+  if (!ready) return <p>Loading admin panel…</p>;
 
   return (
     <div style={{ maxWidth: 680, margin: '20px auto', padding: 16 }}>
       <h2>Admin · Contests</h2>
       {err && <p style={{ color: 'crimson' }}>{err}</p>}
 
-      <div style={{ display: 'grid', gap: 8, border: '1px solid #ddd', padding: 12, borderRadius: 8 }}>
+      <div
+        style={{
+          display: 'grid',
+          gap: 8,
+          border: '1px solid #ddd',
+          padding: 12,
+          borderRadius: 8,
+        }}
+      >
         <input placeholder="Title" value={title} onChange={e => setTitle(e.target.value)} />
         <select value={realm} onChange={e => setRealm(e.target.value)}>
           <option>FREE</option>
@@ -104,7 +133,9 @@ export default function AdminContests() {
         {list.map(c => (
           <div key={c.id} style={{ border: '1px solid #eee', padding: 12, borderRadius: 8 }}>
             <div><b>{c.title ?? c.name}</b></div>
-            <div>Realm: {c.realm ?? c.type} · Fee: {c.entryFee ?? 0} · Active: {String(c.active ?? false)}</div>
+            <div>
+              Realm: {c.realm ?? c.type} · Fee: {c.entryFee ?? 0} · Active: {String(c.active ?? false)}
+            </div>
             <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
               <button onClick={() => toggleActive(c.id, !(c.active ?? false))}>
                 {(c.active ?? false) ? 'Deactivate' : 'Activate'}
