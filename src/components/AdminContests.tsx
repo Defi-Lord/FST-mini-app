@@ -1,17 +1,8 @@
 import React from 'react';
-import { listContests, createContest as createContestAPI, toggleContest as toggleContestAPI, deleteContest as deleteContestAPI } from '../api';
-
-type Contest = {
-  id: string;
-  title: string;
-  realm: string;
-  entryFee: number;
-  active: boolean;
-  createdAt: string;
-};
+import { listContests, createContest as createContestAPI, toggleContest as toggleContestAPI, deleteContest as deleteContestAPI, Contest as APIContest } from '../api';
 
 export default function AdminContests() {
-  const [list, setList] = React.useState<Contest[]>([]);
+  const [list, setList] = React.useState<APIContest[]>([]);
   const [title, setTitle] = React.useState('');
   const [realm, setRealm] = React.useState('FREE');
   const [entryFee, setEntryFee] = React.useState(0);
@@ -97,11 +88,11 @@ export default function AdminContests() {
       <div style={{ display: 'grid', gap: 8 }}>
         {list.map(c => (
           <div key={c.id} style={{ border: '1px solid #eee', padding: 12, borderRadius: 8 }}>
-            <div><b>{c.title}</b></div>
-            <div>Realm: {c.realm} · Fee: {c.entryFee} · Active: {String(c.active)}</div>
+            <div><b>{c.title ?? c.name}</b></div>
+            <div>Realm: {c.realm ?? c.type} · Fee: {c.entryFee ?? 0} · Active: {String(c.active ?? false)}</div>
             <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-              <button onClick={() => toggleActive(c.id, !c.active)}>
-                {c.active ? 'Deactivate' : 'Activate'}
+              <button onClick={() => toggleActive(c.id, !(c.active ?? false))}>
+                {(c.active ?? false) ? 'Deactivate' : 'Activate'}
               </button>
               <button onClick={() => remove(c.id)} style={{ color: 'crimson' }}>
                 Delete
