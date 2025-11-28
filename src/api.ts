@@ -1,6 +1,6 @@
 // src/api.ts
 
-/** ================= Type Definitions (UPDATED) ================= */
+/** ================= Type Definitions (UNCHANGED) ================= */
 export interface Contest {
   id: string
   name: string
@@ -38,7 +38,7 @@ export const API_BASE =
   (import.meta as any).env?.VITE_API_BASE ||
   'https://fst-backend-z7bc.onrender.com'
 
-/** Read / Write Token */
+/** ================= TOKEN HELPERS ================= */
 export function getToken() {
   try {
     return localStorage.getItem('auth_token') || ''
@@ -54,28 +54,38 @@ export function setToken(token: string) {
   } catch {}
 }
 
-/** Headers builder */
+/** ================= ALWAYS BUILD CORRECT HEADERS ================= */
 function buildHeaders(init?: RequestInit): Headers {
-  const headers = new Headers(init?.headers || {})
-  const token = getToken()
+  const headers = new Headers()
 
-  if (token && !headers.has('Authorization')) {
+  // preserve incoming headers first
+  if (init?.headers) {
+    const incoming = new Headers(init.headers)
+    incoming.forEach((v, k) => headers.set(k, v))
+  }
+
+  // ALWAYS attach authorization if token exists
+  const token = getToken()
+  if (token) {
     headers.set('Authorization', `Bearer ${token}`)
   }
 
-  if (!headers.has('Content-Type') && init?.body) {
+  // auto add content-type for body
+  if (init?.body && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json')
   }
 
   return headers
 }
 
-/** Safe request wrapper */
+/** ================= SAFE REQUEST WRAPPER ================= */
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const headers = buildHeaders(init)
+
   const res = await fetch(`${API_BASE}${path}`, {
-    credentials: 'include',
     ...init,
-    headers: buildHeaders(init),
+    headers,
+    credentials: 'include',
   })
 
   if (res.ok) {
@@ -84,6 +94,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
 
   let message = `HTTP ${res.status}`
+
   try {
     const txt = await res.text()
     if (txt) {
@@ -104,7 +115,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   throw new Error(message)
 }
 
-/** Convenience methods */
+/** ================= CONVENIENCE METHODS ================= */
 export const api = {
   get: <T>(p: string, init?: RequestInit) =>
     request<T>(p, { ...(init || {}), method: 'GET' }),
@@ -151,7 +162,7 @@ export async function authVerify(address: string, signature: string, message: st
   return res
 }
 
-/** FIXED - introspect refuses empty token */
+/** FIXED: INTROSPECT ALWAYS SENDS TOKEN */
 export async function authIntrospect(): Promise<IntrospectResponse> {
   const token = getToken()
 
@@ -160,18 +171,18 @@ export async function authIntrospect(): Promise<IntrospectResponse> {
   }
 
   try {
-    const result = await api.post<IntrospectResponse>('/auth/introspect')
-    return result
+    // THIS NOW ALWAYS SENDS Authorization: Bearer <token>
+    return await api.post<IntrospectResponse>('/auth/introspect')
   } catch (err: any) {
     if (err.message.includes('Unauthorized')) signOut()
     return { ok: false, error: err.message }
   }
 }
 
-/** GET LOGGED-IN USER INFO AND CHECK ADMIN */
+/** GET LOGGED-IN USER INFO & ADMIN CHECK */
 export async function getMe(adminOnly = false) {
   const res = await authIntrospect()
-  if (!res.ok) throw new Error(res.error || 'Unauthorized. Please login again.')
+  if (!res.ok) throw new Error(res.error || 'Unauthorized')
 
   if (adminOnly && res.role !== 'ADMIN') {
     signOut()
@@ -182,19 +193,13 @@ export async function getMe(adminOnly = false) {
 }
 
 /* =======================================================
-   ADMIN REQUESTS
+   ADMIN
 ======================================================= */
 async function adminRequest<T>(path: string, init: RequestInit = {}) {
   const token = getToken()
   if (!token) throw new Error('Unauthorized: No admin token found')
 
-  const headers = new Headers(init.headers || {})
-  headers.set('Authorization', `Bearer ${token}`)
-  if (!headers.has('Content-Type') && init.body) {
-    headers.set('Content-Type', 'application/json')
-  }
-
-  return request<T>(path, { ...init, headers })
+  return request<T>(path, init)
 }
 
 export function adminHealth() {
@@ -242,8 +247,7 @@ export async function getContestLeaderboard(id: string) {
   const res = await adminRequest<{ ok: boolean; leaderboard: LeaderboardEntry[] }>(
     `/admin/contests/${id}/leaderboard`
   )
-  const leaderboard = res.leaderboard ?? []
-  return { ok: res.ok, leaderboard }
+  return { ok: res.ok, leaderboard: res.leaderboard ?? [] }
 }
 
 /* =======================================================
