@@ -182,6 +182,7 @@ export async function getMe() {
    ADMIN REQUESTS
 ======================================================= */
 async function adminRequest<T>(path: string, init: RequestInit = {}) {
+  // read the token fresh on every request
   const token = getToken()
   if (!token) throw new Error('Unauthorized: No admin token found')
 
