@@ -168,10 +168,15 @@ export async function authIntrospect(): Promise<IntrospectResponse> {
   }
 }
 
-/** FIXED - getMe handles missing token */
-export async function getMe() {
+/** GET LOGGED-IN USER INFO AND CHECK ADMIN */
+export async function getMe(adminOnly = false) {
   const res = await authIntrospect()
   if (!res.ok) throw new Error(res.error || 'Unauthorized. Please login again.')
+
+  if (adminOnly && res.role !== 'ADMIN') {
+    signOut()
+    throw new Error('Access denied: Admins only')
+  }
 
   return { user: { id: res.wallet!, role: res.role! } }
 }

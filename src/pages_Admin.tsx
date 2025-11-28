@@ -12,7 +12,7 @@ import {
   type AdminUser,
   type LeaderboardEntry,
   signOut,
-  getToken,
+  getMe,
 } from "./api";
 
 type Tab = "overview" | "contests" | "users" | "leaderboard";
@@ -21,7 +21,7 @@ export default function AdminPage({ onBack }: { onBack?: () => void }) {
   const [tab, setTab] = React.useState<Tab>("overview");
   const [health, setHealth] = React.useState<"loading" | "ok" | "bad">("loading");
   const [err, setErr] = React.useState<string | null>(null);
-  const [ready, setReady] = React.useState(false); // wait for token
+  const [ready, setReady] = React.useState(false);
 
   // contests
   const [contests, setContests] = React.useState<Contest[]>([]);
@@ -83,12 +83,16 @@ export default function AdminPage({ onBack }: { onBack?: () => void }) {
   }, []);
 
   React.useEffect(() => {
-    const token = getToken();
-    if (!token) {
-      signOut();
-      return;
-    }
-    setReady(true);
+    const init = async () => {
+      try {
+        await getMe(true); // adminOnly = true
+        setReady(true);
+      } catch (err: any) {
+        console.warn('Access denied:', err.message);
+        signOut();
+      }
+    };
+    init();
   }, []);
 
   React.useEffect(() => {
@@ -200,7 +204,6 @@ export default function AdminPage({ onBack }: { onBack?: () => void }) {
   return (
     <div className="admin-wrap">
       <style>{css}</style>
-
       <header className="admin-header">
         <div className="left">
           {onBack && (
@@ -222,9 +225,7 @@ export default function AdminPage({ onBack }: { onBack?: () => void }) {
             : "API Error"}
         </div>
       </header>
-
       {err && <div className="alert">{err}</div>}
-
       {/* TABS, Overview, Contests, Users, Leaderboard */}
       {/* ... rest remains unchanged ... */}
     </div>

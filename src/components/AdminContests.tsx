@@ -5,7 +5,7 @@ import {
   toggleContest as toggleContestAPI,
   deleteContest as deleteContestAPI,
   Contest as APIContest,
-  getToken,
+  getMe,
   signOut,
 } from '../api';
 
@@ -16,16 +16,10 @@ export default function AdminContests() {
   const [entryFee, setEntryFee] = React.useState(0);
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
-  const [ready, setReady] = React.useState(false); // Wait for token
+  const [ready, setReady] = React.useState(false);
 
   const load = React.useCallback(async () => {
     setErr(null);
-    const token = getToken();
-    if (!token) {
-      console.warn('No token found, redirecting to login...');
-      signOut();
-      return;
-    }
     try {
       const data = await listContests();
       setList(data.contests || []);
@@ -37,9 +31,16 @@ export default function AdminContests() {
   }, []);
 
   React.useEffect(() => {
-    const token = getToken();
-    if (token) setReady(true);
-    else signOut();
+    const init = async () => {
+      try {
+        await getMe(true); // adminOnly = true
+        setReady(true);
+      } catch (err: any) {
+        console.warn('Access denied:', err.message);
+        signOut();
+      }
+    };
+    init();
   }, []);
 
   React.useEffect(() => {
