@@ -171,8 +171,12 @@ export async function authIntrospect(): Promise<IntrospectResponse> {
   }
 
   try {
-    // THIS NOW ALWAYS SENDS Authorization: Bearer <token>
-    return await api.post<IntrospectResponse>('/auth/introspect')
+    // FORCE Authorization header
+    return await api.post<IntrospectResponse>('/auth/introspect', {}, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
   } catch (err: any) {
     if (err.message.includes('Unauthorized')) signOut()
     return { ok: false, error: err.message }
@@ -199,7 +203,11 @@ async function adminRequest<T>(path: string, init: RequestInit = {}) {
   const token = getToken()
   if (!token) throw new Error('Unauthorized: No admin token found')
 
-  return request<T>(path, init)
+  // FORCE attach Authorization ALWAYS
+  const headers = new Headers(init.headers || {})
+  headers.set('Authorization', `Bearer ${token}`)
+
+  return request<T>(path, { ...init, headers })
 }
 
 export function adminHealth() {
