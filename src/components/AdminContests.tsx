@@ -1,5 +1,5 @@
 import React from 'react';
-import { api } from '../lib/api';
+import { listContests, createContest as createContestAPI, toggleContest as toggleContestAPI, deleteContest as deleteContestAPI } from '../api';
 
 type Contest = {
   id: string;
@@ -21,25 +21,25 @@ export default function AdminContests() {
   const load = React.useCallback(async () => {
     setErr(null);
     try {
-      const data = await api<{ ok: true; contests: Contest[] }>('/admin/contests');
-      setList(data.contests);
+      const data = await listContests();
+      setList(data.contests || []);
     } catch (e: any) {
       setErr(String(e?.message || e));
     }
   }, []);
 
-  React.useEffect(() => { load(); }, [load]);
+  React.useEffect(() => {
+    load();
+  }, [load]);
 
   const createContest = async () => {
     if (busy) return;
-    setBusy(true); setErr(null);
+    setBusy(true);
+    setErr(null);
     try {
-      await api('/admin/contests', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, realm, entryFee: Number(entryFee) }),
-      });
-      setTitle(''); setEntryFee(0);
+      await createContestAPI({ title, realm, entryFee: Number(entryFee) });
+      setTitle('');
+      setEntryFee(0);
       await load();
     } catch (e: any) {
       setErr(String(e?.message || e));
@@ -51,11 +51,7 @@ export default function AdminContests() {
   const toggleActive = async (id: string, active: boolean) => {
     setErr(null);
     try {
-      await api(`/admin/contests/${id}/toggle`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ active }),
-      });
+      await toggleContestAPI(id, active);
       await load();
     } catch (e: any) {
       setErr(String(e?.message || e));
@@ -66,7 +62,7 @@ export default function AdminContests() {
     if (!confirm('Delete this contest?')) return;
     setErr(null);
     try {
-      await api(`/admin/contests/${id}`, { method: 'DELETE' });
+      await deleteContestAPI(id);
       await load();
     } catch (e: any) {
       setErr(String(e?.message || e));
@@ -86,8 +82,12 @@ export default function AdminContests() {
           <option>MONTHLY</option>
           <option>SEASONAL</option>
         </select>
-        <input type="number" placeholder="Entry fee (lamports or integer)" value={entryFee}
-               onChange={e => setEntryFee(Number(e.target.value))} />
+        <input
+          type="number"
+          placeholder="Entry fee (lamports or integer)"
+          value={entryFee}
+          onChange={e => setEntryFee(Number(e.target.value))}
+        />
         <button disabled={busy || !title} onClick={createContest}>
           {busy ? 'Creating…' : 'Create contest'}
         </button>
