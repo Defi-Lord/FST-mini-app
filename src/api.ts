@@ -4,31 +4,31 @@
 export interface Contest {
   id: string
   name: string
-  title?: string           // added to match code usage
+  title?: string
   type: string
   realm?: string
   open?: boolean
   startAt?: string | null
   endAt?: string | null
-  createdAt?: string       // added for Admin page
-  active?: boolean         // added for HomeHub and Admin
-  entryFee?: number        // added for HomeHub
+  createdAt?: string
+  active?: boolean
+  entryFee?: number
 }
 
 export interface AdminUser {
   id: string
   wallet: string
   role: string
-  displayName?: string     // added for Admin page
-  createdAt?: string       // added for Admin page
-  updatedAt?: string       // added for Admin page
+  displayName?: string
+  createdAt?: string
+  updatedAt?: string
 }
 
 export interface LeaderboardEntry {
   id: string
   userId: string
   username?: string
-  displayName?: string     // added for Admin/HomeHub usage
+  displayName?: string
   points?: number
   rank?: number
 }
@@ -58,6 +58,8 @@ export function setToken(token: string) {
 function buildHeaders(init?: RequestInit): Headers {
   const headers = new Headers(init?.headers || {})
   const token = getToken()
+
+  console.log("Authorization header will be:", token ? `Bearer ${token}` : "none")
 
   if (token && !headers.has('Authorization')) {
     headers.set('Authorization', `Bearer ${token}`)
@@ -96,10 +98,9 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     }
   } catch {}
 
-  // Auto logout if token expired or invalid
   if (res.status === 401) {
     signOut()
-    message = message || 'Unauthorized: Token invalid or expired'
+    message = 'Unauthorized: Token invalid or expired'
   }
 
   throw new Error(message)
@@ -112,14 +113,14 @@ export const api = {
 
   post: <T>(p: string, body?: unknown, init?: RequestInit) =>
     request<T>(p, {
-      ...(init || {}), 
+      ...(init || {}),
       method: 'POST',
       body: body ? JSON.stringify(body) : undefined,
     }),
 
   patch: <T>(p: string, body?: unknown, init?: RequestInit) =>
     request<T>(p, {
-      ...(init || {}), 
+      ...(init || {}),
       method: 'PATCH',
       body: body ? JSON.stringify(body) : undefined,
     }),
@@ -138,6 +139,7 @@ export type IntrospectResponse = {
   error?: string
 }
 
+/** LOGIN VERIFY */
 export async function authVerify(address: string, signature: string, message: string) {
   const res = await api.post<{ ok: boolean; token: string; role: string }>(
     '/auth/verify',
@@ -151,18 +153,24 @@ export async function authVerify(address: string, signature: string, message: st
   return res
 }
 
-// Updated introspect to auto-handle invalid/expired tokens
+/** FIXED - introspect refuses empty token */
 export async function authIntrospect(): Promise<IntrospectResponse> {
+  const token = getToken()
+
+  if (!token) {
+    return { ok: false, error: 'No auth token found' }
+  }
+
   try {
-    return await api.post<IntrospectResponse>('/auth/introspect')
+    const result = await api.post<IntrospectResponse>('/auth/introspect')
+    return result
   } catch (err: any) {
-    // If 401 occurs, clear token
     if (err.message.includes('Unauthorized')) signOut()
     return { ok: false, error: err.message }
   }
 }
 
-// Updated getMe() to handle expired tokens
+/** FIXED - getMe handles missing token */
 export async function getMe() {
   const res = await authIntrospect()
   if (!res.ok) throw new Error(res.error || 'Unauthorized. Please login again.')
@@ -186,7 +194,6 @@ async function adminRequest<T>(path: string, init: RequestInit = {}) {
   return request<T>(path, { ...init, headers })
 }
 
-/* Admin endpoints */
 export function adminHealth() {
   return adminRequest<{ ok: boolean; status?: string }>('/health')
 }
@@ -244,7 +251,7 @@ export function getUserHistory() {
 }
 
 /* =======================================================
-   CONTEST (JOIN)
+   CONTEST JOIN
 ======================================================= */
 export function joinContest(contestId: string, team?: any) {
   return api.post<{ ok: boolean; created?: boolean }>(
@@ -267,9 +274,11 @@ export function verifyPaidJoin(contestId: string, signature: string) {
 export function fetchBootstrap() {
   return api.get<any>('/fpl/api/bootstrap-static/')
 }
+
 export function fetchFixtures() {
   return api.get<any>('/fpl/api/fixtures/')
 }
+
 export function fetchElementSummary(id: string | number) {
   return api.get<any>(`/fpl/api/element-summary/${id}/`)
 }
