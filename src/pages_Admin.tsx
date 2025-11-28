@@ -11,6 +11,7 @@ import {
   type Contest,
   type AdminUser,
   type LeaderboardEntry,
+  signOut,
 } from "./api";
 
 type Tab = "overview" | "contests" | "users" | "leaderboard";
@@ -45,6 +46,7 @@ export default function AdminPage({ onBack }: { onBack?: () => void }) {
       setHealth("ok");
     } catch (e: any) {
       setHealth("bad");
+      if (e.message?.includes("Unauthorized")) signOut();
       setErr(String(e?.message || e));
       console.error("Admin health check failed:", e);
     }
@@ -53,7 +55,7 @@ export default function AdminPage({ onBack }: { onBack?: () => void }) {
   const loadContests = React.useCallback(async () => {
     try {
       const res = await listContests();
-      const sorted = res.contests.sort(
+      const sorted = (res.contests || []).sort(
         (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
       );
       setContests(sorted);
@@ -61,6 +63,7 @@ export default function AdminPage({ onBack }: { onBack?: () => void }) {
         setSelectedContest(res.contests[0].id);
       }
     } catch (e: any) {
+      if (e.message?.includes("Unauthorized")) signOut();
       setErr(String(e?.message || e));
       console.error("Failed to load contests:", e);
     }
@@ -71,6 +74,7 @@ export default function AdminPage({ onBack }: { onBack?: () => void }) {
       const res = await listUsers();
       setUsers(res.users);
     } catch (e: any) {
+      if (e.message?.includes("Unauthorized")) signOut();
       setErr(String(e?.message || e));
       console.error("Failed to load users:", e);
     }
@@ -114,6 +118,7 @@ export default function AdminPage({ onBack }: { onBack?: () => void }) {
       setEndAt("");
       await loadContests();
     } catch (e: any) {
+      if (e.message?.includes("Unauthorized")) signOut();
       setErr(String(e?.message || e));
       console.error("Failed to create contest:", e);
     } finally {
@@ -127,6 +132,7 @@ export default function AdminPage({ onBack }: { onBack?: () => void }) {
       await toggleContest(id, active);
       await loadContests();
     } catch (e: any) {
+      if (e.message?.includes("Unauthorized")) signOut();
       setErr(String(e?.message || e));
       console.error("Failed to toggle contest:", e);
     }
@@ -139,6 +145,7 @@ export default function AdminPage({ onBack }: { onBack?: () => void }) {
       await deleteContest(id);
       await loadContests();
     } catch (e: any) {
+      if (e.message?.includes("Unauthorized")) signOut();
       setErr(String(e?.message || e));
       console.error("Failed to delete contest:", e);
     }
@@ -152,6 +159,7 @@ export default function AdminPage({ onBack }: { onBack?: () => void }) {
       const res = await getContestLeaderboard(selectedContest);
       setLeaderboard(res.leaderboard);
     } catch (e: any) {
+      if (e.message?.includes("Unauthorized")) signOut();
       setErr(String(e?.message || e));
       setLeaderboard([]);
       console.error("Failed to load leaderboard:", e);
