@@ -19,7 +19,9 @@ type Tab = "overview" | "contests" | "users" | "leaderboard";
 
 export default function AdminPage({ onBack }: { onBack?: () => void }) {
   const [tab, setTab] = React.useState<Tab>("overview");
-  const [health, setHealth] = React.useState<"loading" | "ok" | "bad">("loading");
+  const [health, setHealth] = React.useState<
+    "loading" | "ok" | "bad"
+  >("loading");
   const [err, setErr] = React.useState<string | null>(null);
   const [ready, setReady] = React.useState(false);
 
@@ -38,28 +40,36 @@ export default function AdminPage({ onBack }: { onBack?: () => void }) {
 
   // leaderboard
   const [selectedContest, setSelectedContest] = React.useState<string>("");
-  const [leaderboard, setLeaderboard] = React.useState<LeaderboardEntry[]>([]);
+  const [leaderboard, setLeaderboard] = React.useState<
+    LeaderboardEntry[]
+  >([]);
   const [lbBusy, setLbBusy] = React.useState(false);
 
-  /** ================================
-   * VERIFY ADMIN FIRST
-   =================================*/
+  /* ============================================================
+     1) CHECK TOKEN + VERIFY ADMIN BEFORE ANY API REQUEST
+     ============================================================ */
   React.useEffect(() => {
     const init = async () => {
       try {
-        await getMe(true); // adminOnly = true
+        const token = localStorage.getItem("authToken");
+        if (!token) {
+          console.warn("⚠️ No token found. Logging out.");
+          return signOut();
+        }
+
+        await getMe(true); // admin only
         setReady(true);
       } catch (err: any) {
-        console.warn("Access denied:", err.message);
+        console.error("Admin validation failed:", err.message);
         signOut();
       }
     };
     init();
   }, []);
 
-  /** ================================
-   * HEALTH
-   =================================*/
+  /* ============================================================
+     HEALTH CHECK
+     ============================================================ */
   const loadHealth = React.useCallback(async () => {
     setErr(null);
     try {
@@ -68,46 +78,50 @@ export default function AdminPage({ onBack }: { onBack?: () => void }) {
     } catch (e: any) {
       setHealth("bad");
       if (e.message?.includes("Unauthorized")) signOut();
-      setErr(String(e?.message || e));
+      setErr(String(e.message || e));
     }
   }, []);
 
-  /** ================================
-   * LOAD CONTESTS
-   =================================*/
-  const loadContests = React.useCallback(async () => {
-    try {
-      const res = await listContests();
-      const sorted = (res.contests || []).sort(
-        (a, b) =>
-          new Date(b.createdAt || 0).getTime() -
-          new Date(a.createdAt || 0).getTime()
-      );
-      setContests(sorted);
+  /* ============================================================
+     LOAD CONTESTS
+     ============================================================ */
+  const loadContests = React.useCallback(
+    async () => {
+      try {
+        const res = await listContests();
+        const sorted = (res.contests || []).sort(
+          (a, b) =>
+            new Date(b.createdAt || 0).getTime() -
+            new Date(a.createdAt || 0).getTime()
+        );
 
-      if (!selectedContest && res.contests.length) {
-        setSelectedContest(res.contests[0].id);
+        setContests(sorted);
+
+        if (!selectedContest && sorted.length) {
+          setSelectedContest(sorted[0].id);
+        }
+      } catch (e: any) {
+        if (e.message?.includes("Unauthorized")) signOut();
+        setErr(String(e.message || e));
       }
-    } catch (e: any) {
-      if (e.message?.includes("Unauthorized")) signOut();
-      setErr(String(e.message || e));
-    }
-  }, [selectedContest]);
+    },
+    [selectedContest]
+  );
 
-  /** ================================
-   * LOAD USERS
-   =================================*/
+  /* ============================================================
+     LOAD USERS
+     ============================================================ */
   const loadUsers = React.useCallback(async () => {
     try {
       const res = await listUsers();
-      setUsers(res.users);
+      setUsers(res.users || []);
     } catch (e: any) {
       if (e.message?.includes("Unauthorized")) signOut();
       setErr(String(e.message || e));
     }
   }, []);
 
-  /** LOAD ALL IF READY */
+  /* = Load everything when ready = */
   React.useEffect(() => {
     if (ready) {
       loadHealth();
@@ -116,9 +130,9 @@ export default function AdminPage({ onBack }: { onBack?: () => void }) {
     }
   }, [ready, loadHealth, loadContests, loadUsers]);
 
-  /** ================================
-   * FILTERED USERS
-   =================================*/
+  /* ============================================================
+     FILTER USERS
+     ============================================================ */
   const filteredUsers = React.useMemo(() => {
     if (!userSearch.trim()) return users;
     const q = userSearch.trim().toLowerCase();
@@ -129,9 +143,9 @@ export default function AdminPage({ onBack }: { onBack?: () => void }) {
     );
   }, [users, userSearch]);
 
-  /** ================================
-   * CREATE CONTEST
-   =================================*/
+  /* ============================================================
+     CREATE CONTEST
+     ============================================================ */
   const createOne = async () => {
     if (!title) return;
 
@@ -167,9 +181,9 @@ export default function AdminPage({ onBack }: { onBack?: () => void }) {
     }
   };
 
-  /** ================================
-   * TOGGLE OPEN STATUS
-   =================================*/
+  /* ============================================================
+     TOGGLE CONTEST ACTIVE
+     ============================================================ */
   const toggleOne = async (id: string, open: boolean) => {
     setErr(null);
     try {
@@ -181,9 +195,9 @@ export default function AdminPage({ onBack }: { onBack?: () => void }) {
     }
   };
 
-  /** ================================
-   * DELETE CONTEST
-   =================================*/
+  /* ============================================================
+     DELETE CONTEST
+     ============================================================ */
   const removeOne = async (id: string) => {
     if (!confirm("Delete this contest?")) return;
 
@@ -197,9 +211,9 @@ export default function AdminPage({ onBack }: { onBack?: () => void }) {
     }
   };
 
-  /** ================================
-   * LOAD LEADERBOARD
-   =================================*/
+  /* ============================================================
+     LOAD LEADERBOARD
+     ============================================================ */
   const loadLeaderboard = async () => {
     if (!selectedContest) return;
 
@@ -222,9 +236,9 @@ export default function AdminPage({ onBack }: { onBack?: () => void }) {
     if (tab === "leaderboard") loadLeaderboard();
   }, [tab, selectedContest]);
 
-  /** ================================
-   * STATUS CALC
-   =================================*/
+  /* ============================================================
+     STATUS CALC
+     ============================================================ */
   const now = Date.now();
   const contestStatus = (c: Contest) => {
     const start = c.startAt ? new Date(c.startAt).getTime() : 0;
@@ -267,7 +281,7 @@ export default function AdminPage({ onBack }: { onBack?: () => void }) {
 
       {err && <div className="alert">{err}</div>}
 
-      {/* Your tabs + content below unchanged */}
+      {/* TAB CONTENT — your existing JSX stays unchanged */}
     </div>
   );
 }
