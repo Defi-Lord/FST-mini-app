@@ -1,6 +1,6 @@
 // src/api.ts
 
-/** ================= Type Definitions (UNCHANGED) ================= */
+/** ================= Type Definitions ================= */
 export interface Contest {
   id: string
   name: string
@@ -36,43 +36,58 @@ export interface LeaderboardEntry {
 /** ================= Base Config ================= */
 export const API_BASE =
   (import.meta as any).env?.VITE_API_BASE ||
-  'https://fst-backend-z7bc.onrender.com'
+  "https://fst-backend-z7bc.onrender.com"
 
 /** ================= TOKEN HELPERS ================= */
+/**
+ * getToken() now checks multiple possible localStorage keys for the JWT
+ * to remain compatible with different parts of your app (fst_jwt, auth_token).
+ */
 export function getToken() {
   try {
-    return localStorage.getItem('auth_token') || ''
+    // priority: auth_token (legacy in some places) -> fst_jwt (ConnectWallet) -> null
+    const a = localStorage.getItem("auth_token")
+    if (a && a.trim()) return a
+    const b = localStorage.getItem("fst_jwt")
+    if (b && b.trim()) return b
+    return ""
   } catch {
-    return ''
+    return ""
   }
 }
 
+/**
+ * setToken() writes the token to both keys so other modules expecting either key stay working.
+ */
 export function setToken(token: string) {
   try {
-    if (!token) localStorage.removeItem('auth_token')
-    else localStorage.setItem('auth_token', token)
+    if (!token) {
+      localStorage.removeItem("auth_token")
+      localStorage.removeItem("fst_jwt")
+    } else {
+      localStorage.setItem("auth_token", token)
+      localStorage.setItem("fst_jwt", token)
+    }
   } catch {}
 }
 
-/** ================= ALWAYS BUILD CORRECT HEADERS ================= */
+/** ================= ALWAYS BUILD HEADERS ================= */
 function buildHeaders(init?: RequestInit): Headers {
   const headers = new Headers()
 
-  // preserve incoming headers first
   if (init?.headers) {
     const incoming = new Headers(init.headers)
     incoming.forEach((v, k) => headers.set(k, v))
   }
 
-  // ALWAYS attach authorization if token exists
-  const token = getToken()
-  if (token) {
-    headers.set('Authorization', `Bearer ${token}`)
+  // only add Authorization if not already present
+  if (!headers.has("Authorization")) {
+    const token = getToken()
+    if (token) headers.set("Authorization", `Bearer ${token}`)
   }
 
-  // auto add content-type for body
-  if (init?.body && !headers.has('Content-Type')) {
-    headers.set('Content-Type', 'application/json')
+  if (init?.body && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json")
   }
 
   return headers
@@ -85,7 +100,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers,
-    credentials: 'include',
+    credentials: "include",
   })
 
   if (res.ok) {
@@ -94,7 +109,6 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
 
   let message = `HTTP ${res.status}`
-
   try {
     const txt = await res.text()
     if (txt) {
@@ -109,33 +123,33 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   if (res.status === 401) {
     signOut()
-    message = 'Unauthorized: Token invalid or expired'
+    message = "Unauthorized: Token invalid or expired"
   }
 
   throw new Error(message)
 }
 
-/** ================= CONVENIENCE METHODS ================= */
+/** ================= API SHORTCUTS ================= */
 export const api = {
   get: <T>(p: string, init?: RequestInit) =>
-    request<T>(p, { ...(init || {}), method: 'GET' }),
+    request<T>(p, { ...(init || {}), method: "GET" }),
 
   post: <T>(p: string, body?: unknown, init?: RequestInit) =>
     request<T>(p, {
       ...(init || {}),
-      method: 'POST',
+      method: "POST",
       body: body ? JSON.stringify(body) : undefined,
     }),
 
   patch: <T>(p: string, body?: unknown, init?: RequestInit) =>
     request<T>(p, {
       ...(init || {}),
-      method: 'PATCH',
+      method: "PATCH",
       body: body ? JSON.stringify(body) : undefined,
     }),
 
   delete: <T>(p: string, init?: RequestInit) =>
-    request<T>(p, { ...(init || {}), method: 'DELETE' }),
+    request<T>(p, { ...(init || {}), method: "DELETE" }),
 }
 
 /* =======================================================
@@ -151,7 +165,7 @@ export type IntrospectResponse = {
 /** LOGIN VERIFY */
 export async function authVerify(address: string, signature: string, message: string) {
   const res = await api.post<{ ok: boolean; token: string; role: string }>(
-    '/auth/verify',
+    "/auth/verify",
     { address, signature, message }
   )
 
@@ -162,93 +176,95 @@ export async function authVerify(address: string, signature: string, message: st
   return res
 }
 
-/** FIXED: INTROSPECT ALWAYS SENDS TOKEN */
+/** INTROSPECT — always send token */
 export async function authIntrospect(): Promise<IntrospectResponse> {
   const token = getToken()
 
-  if (!token) {
-    return { ok: false, error: 'No auth token found' }
-  }
+  if (!token) return { ok: false, error: "No auth token found" }
 
   try {
-    // FORCE Authorization header
-    return await api.post<IntrospectResponse>('/auth/introspect', {}, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    })
+    return await api.post<IntrospectResponse>(
+      "/auth/introspect",
+      {},
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    )
   } catch (err: any) {
-    if (err.message.includes('Unauthorized')) signOut()
+    if (err.message.includes("Unauthorized")) signOut()
     return { ok: false, error: err.message }
   }
 }
 
-/** GET LOGGED-IN USER INFO & ADMIN CHECK */
 export async function getMe(adminOnly = false) {
   const res = await authIntrospect()
-  if (!res.ok) throw new Error(res.error || 'Unauthorized')
+  if (!res.ok) throw new Error(res.error || "Unauthorized")
 
-  if (adminOnly && res.role !== 'ADMIN') {
+  if (adminOnly && res.role !== "ADMIN") {
     signOut()
-    throw new Error('Access denied: Admins only')
+    throw new Error("Access denied: Admins only")
   }
 
   return { user: { id: res.wallet!, role: res.role! } }
 }
 
-/* =======================================================
-   ADMIN
+/** =======================================================
+    ADMIN REQUEST (FIXED — NO MORE 401)
 ======================================================= */
 async function adminRequest<T>(path: string, init: RequestInit = {}) {
   const token = getToken()
-  if (!token) throw new Error('Unauthorized: No admin token found')
+  if (!token) throw new Error("Unauthorized: No admin token found")
 
-  // FORCE attach Authorization ALWAYS
-  const headers = new Headers(init.headers || {})
-  headers.set('Authorization', `Bearer ${token}`)
-
-  return request<T>(path, { ...init, headers })
+  return request<T>(path, {
+    ...init,
+    headers: {
+      ...(init.headers || {}),
+      Authorization: `Bearer ${token}`,
+    },
+    credentials: "include",
+  })
 }
 
 export function adminHealth() {
-  return adminRequest<{ ok: boolean; status?: string }>('/health')
+  return adminRequest<{ ok: boolean; status?: string }>("/health")
 }
 
 export function listContests() {
-  return adminRequest<{ ok?: boolean; contests: Contest[] }>('/admin/contests')
+  return adminRequest<{ ok?: boolean; contests: Contest[] }>("/admin/contests")
 }
 
 export function createContest(data: any) {
   const payload = {
     ...data,
-    name: data.name ?? data.title ?? '',
-    title: data.title ?? data.name ?? '',
-    type: data.type ?? 'general',
-    realm: data.realm ?? 'WEEKLY',
+    name: data.name ?? data.title ?? "",
+    title: data.title ?? data.name ?? "",
+    type: data.type ?? "general",
+    realm: data.realm ?? "WEEKLY",
     startAt: data.startAt ?? null,
     endAt: data.endAt ?? null,
   }
-  return adminRequest<{ ok: boolean; contest: Contest }>('/admin/contests/create', {
-    method: 'POST',
+
+  return adminRequest<{ ok: boolean; contest: Contest }>("/admin/contests/create", {
+    method: "POST",
     body: JSON.stringify(payload),
   })
 }
 
 export function toggleContest(id: string, open: boolean) {
   return adminRequest<{ ok: boolean }>(`/admin/contests/${id}/toggle`, {
-    method: 'PATCH',
+    method: "PATCH",
     body: JSON.stringify({ open }),
   })
 }
 
 export function deleteContest(id: string) {
   return adminRequest<{ ok: boolean }>(`/admin/contests/${id}`, {
-    method: 'DELETE',
+    method: "DELETE",
   })
 }
 
 export function listUsers() {
-  return adminRequest<{ ok: boolean; users: AdminUser[] }>('/admin/users')
+  return adminRequest<{ ok: boolean; users: AdminUser[] }>("/admin/users")
 }
 
 export async function getContestLeaderboard(id: string) {
@@ -259,15 +275,12 @@ export async function getContestLeaderboard(id: string) {
 }
 
 /* =======================================================
-   USER HISTORY
+   USER + FPL
 ======================================================= */
 export function getUserHistory() {
-  return api.get<{ ok: boolean; history: any[] }>('/user/history')
+  return api.get<{ ok: boolean; history: any[] }>("/user/history")
 }
 
-/* =======================================================
-   CONTEST JOIN
-======================================================= */
 export function joinContest(contestId: string, team?: any) {
   return api.post<{ ok: boolean; created?: boolean }>(
     `/contests/${contestId}/join`,
@@ -283,15 +296,12 @@ export function verifyPaidJoin(contestId: string, signature: string) {
   return api.post<any>(`/contests/${contestId}/join/verify`, { signature })
 }
 
-/* =======================================================
-   FPL PROXIES
-======================================================= */
 export function fetchBootstrap() {
-  return api.get<any>('/fpl/api/bootstrap-static/')
+  return api.get<any>("/fpl/api/bootstrap-static/")
 }
 
 export function fetchFixtures() {
-  return api.get<any>('/fpl/api/fixtures/')
+  return api.get<any>("/fpl/api/fixtures/")
 }
 
 export function fetchElementSummary(id: string | number) {
@@ -303,7 +313,9 @@ export function fetchElementSummary(id: string | number) {
 ======================================================= */
 export function signOut() {
   try {
-    localStorage.removeItem('auth_token')
-    localStorage.removeItem('sol_wallet')
+    // remove both keys for compatibility
+    localStorage.removeItem("auth_token")
+    localStorage.removeItem("fst_jwt")
+    localStorage.removeItem("sol_wallet")
   } catch {}
 }
