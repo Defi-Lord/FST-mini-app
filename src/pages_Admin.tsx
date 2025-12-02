@@ -15,52 +15,53 @@ import {
   getMe,
 } from "./api";
 
+/* ============================================================
+   TOKEN HELPER — FIXED (now matches api.ts)
+   ============================================================ */
+function requireAuth() {
+  const token = localStorage.getItem("auth_token"); // FIXED
+  if (!token) {
+    console.warn("No token found — signing out");
+    signOut();
+    throw new Error("Unauthorized");
+  }
+  return token;
+}
+
 type Tab = "overview" | "contests" | "users" | "leaderboard";
 
 export default function AdminPage({ onBack }: { onBack?: () => void }) {
   const [tab, setTab] = React.useState<Tab>("overview");
-  const [health, setHealth] = React.useState<
-    "loading" | "ok" | "bad"
-  >("loading");
+  const [health, setHealth] = React.useState<"loading" | "ok" | "bad">("loading");
   const [err, setErr] = React.useState<string | null>(null);
   const [ready, setReady] = React.useState(false);
 
-  // contests
   const [contests, setContests] = React.useState<Contest[]>([]);
   const [title, setTitle] = React.useState("");
   const [realm, setRealm] = React.useState<Contest["realm"]>("FREE");
   const [fee, setFee] = React.useState<number>(0);
   const [startAt, setStartAt] = React.useState<string>("");
   const [endAt, setEndAt] = React.useState<string>("");
+
   const [busy, setBusy] = React.useState(false);
 
-  // users
   const [users, setUsers] = React.useState<AdminUser[]>([]);
   const [userSearch, setUserSearch] = React.useState("");
 
-  // leaderboard
   const [selectedContest, setSelectedContest] = React.useState<string>("");
-  const [leaderboard, setLeaderboard] = React.useState<
-    LeaderboardEntry[]
-  >([]);
+  const [leaderboard, setLeaderboard] = React.useState<LeaderboardEntry[]>([]);
   const [lbBusy, setLbBusy] = React.useState(false);
 
   /* ============================================================
-     1) CHECK TOKEN + VERIFY ADMIN BEFORE ANY API REQUEST
+     AUTH VALIDATION — FIXED
      ============================================================ */
   React.useEffect(() => {
     const init = async () => {
       try {
-        const token = localStorage.getItem("authToken");
-        if (!token) {
-          console.warn("⚠️ No token found. Logging out.");
-          return signOut();
-        }
-
-        await getMe(true); // admin only
+        requireAuth();
+        await getMe(true); // FIXED — this function reads token internally
         setReady(true);
-      } catch (err: any) {
-        console.error("Admin validation failed:", err.message);
+      } catch {
         signOut();
       }
     };
@@ -68,74 +69,73 @@ export default function AdminPage({ onBack }: { onBack?: () => void }) {
   }, []);
 
   /* ============================================================
-     HEALTH CHECK
+     HEALTH CHECK — FIXED
      ============================================================ */
   const loadHealth = React.useCallback(async () => {
-    setErr(null);
     try {
-      await adminHealth();
+      requireAuth();
+      await adminHealth(); // FIXED — don't pass token manually
       setHealth("ok");
     } catch (e: any) {
       setHealth("bad");
-      if (e.message?.includes("Unauthorized")) signOut();
-      setErr(String(e.message || e));
+      setErr(String(e.message));
+      signOut();
     }
   }, []);
 
   /* ============================================================
-     LOAD CONTESTS
+     LOAD CONTESTS — FIXED
      ============================================================ */
-  const loadContests = React.useCallback(
-    async () => {
-      try {
-        const res = await listContests();
-        const sorted = (res.contests || []).sort(
-          (a, b) =>
-            new Date(b.createdAt || 0).getTime() -
-            new Date(a.createdAt || 0).getTime()
-        );
+  const loadContests = React.useCallback(async () => {
+    try {
+      requireAuth();
+      const res = await listContests(); // FIXED
 
-        setContests(sorted);
+      const sorted = (res.contests || []).sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
 
-        if (!selectedContest && sorted.length) {
-          setSelectedContest(sorted[0].id);
-        }
-      } catch (e: any) {
-        if (e.message?.includes("Unauthorized")) signOut();
-        setErr(String(e.message || e));
+      setContests(sorted);
+
+      if (!selectedContest && sorted.length) {
+        setSelectedContest(sorted[0].id);
       }
-    },
-    [selectedContest]
-  );
+    } catch (e: any) {
+      setErr(String(e.message));
+      signOut();
+    }
+  }, [selectedContest]);
 
   /* ============================================================
-     LOAD USERS
+     LOAD USERS — FIXED
      ============================================================ */
   const loadUsers = React.useCallback(async () => {
     try {
-      const res = await listUsers();
+      requireAuth();
+      const res = await listUsers(); // FIXED
       setUsers(res.users || []);
     } catch (e: any) {
-      if (e.message?.includes("Unauthorized")) signOut();
-      setErr(String(e.message || e));
+      setErr(String(e.message));
+      signOut();
     }
   }, []);
 
-  /* = Load everything when ready = */
+  /* ============================================================
+     RUN AFTER ADMIN VERIFIED
+     ============================================================ */
   React.useEffect(() => {
     if (ready) {
       loadHealth();
       loadContests();
       loadUsers();
     }
-  }, [ready, loadHealth, loadContests, loadUsers]);
+  }, [ready]);
 
   /* ============================================================
      FILTER USERS
      ============================================================ */
   const filteredUsers = React.useMemo(() => {
-    if (!userSearch.trim()) return users;
-    const q = userSearch.trim().toLowerCase();
+    const q = userSearch.toLowerCase();
     return users.filter(
       (u) =>
         u.id.toLowerCase().includes(q) ||
@@ -144,15 +144,12 @@ export default function AdminPage({ onBack }: { onBack?: () => void }) {
   }, [users, userSearch]);
 
   /* ============================================================
-     CREATE CONTEST
+     CREATE CONTEST — FIXED
      ============================================================ */
   const createOne = async () => {
-    if (!title) return;
+    if (!title) return alert("Title is required");
 
-    if (realm !== "FREE" && (!startAt || !endAt)) {
-      alert("Please set both start and end dates for paid contests.");
-      return;
-    }
+    requireAuth();
 
     setBusy(true);
     setErr(null);
@@ -174,58 +171,54 @@ export default function AdminPage({ onBack }: { onBack?: () => void }) {
 
       await loadContests();
     } catch (e: any) {
-      if (e.message?.includes("Unauthorized")) signOut();
-      setErr(String(e.message || e));
+      setErr(String(e.message));
     } finally {
       setBusy(false);
     }
   };
 
   /* ============================================================
-     TOGGLE CONTEST ACTIVE
+     TOGGLE CONTEST — FIXED
      ============================================================ */
   const toggleOne = async (id: string, open: boolean) => {
-    setErr(null);
     try {
+      requireAuth();
       await toggleContest(id, open);
       await loadContests();
     } catch (e: any) {
-      if (e.message?.includes("Unauthorized")) signOut();
-      setErr(String(e.message || e));
+      setErr(String(e.message));
     }
   };
 
   /* ============================================================
-     DELETE CONTEST
+     DELETE CONTEST — FIXED
      ============================================================ */
   const removeOne = async (id: string) => {
     if (!confirm("Delete this contest?")) return;
 
-    setErr(null);
     try {
+      requireAuth();
       await deleteContest(id);
       await loadContests();
     } catch (e: any) {
-      if (e.message?.includes("Unauthorized")) signOut();
-      setErr(String(e.message || e));
+      setErr(String(e.message));
     }
   };
 
   /* ============================================================
-     LOAD LEADERBOARD
+     LOAD LEADERBOARD — FIXED
      ============================================================ */
   const loadLeaderboard = async () => {
     if (!selectedContest) return;
 
-    setLbBusy(true);
-    setErr(null);
+    requireAuth();
 
+    setLbBusy(true);
     try {
       const res = await getContestLeaderboard(selectedContest);
       setLeaderboard(res.leaderboard || []);
     } catch (e: any) {
-      if (e.message?.includes("Unauthorized")) signOut();
-      setErr(String(e.message || e));
+      setErr(String(e.message));
       setLeaderboard([]);
     } finally {
       setLbBusy(false);
@@ -237,12 +230,12 @@ export default function AdminPage({ onBack }: { onBack?: () => void }) {
   }, [tab, selectedContest]);
 
   /* ============================================================
-     STATUS CALC
+     STATUS FUNCTION
      ============================================================ */
   const now = Date.now();
   const contestStatus = (c: Contest) => {
-    const start = c.startAt ? new Date(c.startAt).getTime() : 0;
-    const end = c.endAt ? new Date(c.endAt).getTime() : 0;
+    const start = new Date(c.startAt || 0).getTime();
+    const end = new Date(c.endAt || 0).getTime();
 
     if (now < start) return "Scheduled";
     if (now >= start && now <= end) return "Running";
@@ -266,22 +259,14 @@ export default function AdminPage({ onBack }: { onBack?: () => void }) {
           <h2>Admin Dashboard</h2>
         </div>
 
-        <div
-          className={`pill ${
-            health === "ok" ? "ok" : health === "bad" ? "bad" : "warn"
-          }`}
-        >
-          {health === "loading"
-            ? "Checking…"
-            : health === "ok"
-            ? "API OK"
-            : "API Error"}
+        <div className={`pill ${health === "ok" ? "ok" : health === "bad" ? "bad" : "warn"}`}>
+          {health === "loading" ? "Checking…" : health === "ok" ? "API OK" : "API Error"}
         </div>
       </header>
 
       {err && <div className="alert">{err}</div>}
 
-      {/* TAB CONTENT — your existing JSX stays unchanged */}
+      {/* Your UI here */}
     </div>
   );
 }
