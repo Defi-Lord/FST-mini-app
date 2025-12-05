@@ -39,6 +39,9 @@ export const API_BASE =
   'https://fst-backend-z7bc.onrender.com'
 
 /** ================= TOKEN HELPERS ================= */
+/**
+ * Read token from several keys for compatibility.
+ */
 export function getToken() {
   try {
     return (
@@ -52,6 +55,7 @@ export function getToken() {
   }
 }
 
+/** set token — canonical key auth_token */
 export function setToken(token: string) {
   try {
     if (!token) localStorage.removeItem('auth_token')
@@ -161,14 +165,14 @@ export type IntrospectResponse = {
   error?: string
 }
 
-/** LOGIN VERIFY — FIXED TO MATCH BACKEND */
-export async function authVerify(walletAddress: string, signature: string, message: string) {
+/** LOGIN VERIFY — match backend param names */
+export async function authVerify(walletAddress: string, signature: string, message?: string) {
   const res = await api.post<{ success: boolean; token: string; role: string }>(
     '/auth/verify',
     {
-      walletAddress,     // ✔ FIXED naming
-      signature,         // ✔ correct
-      message            // ✔ backend ignores but allowed
+      walletAddress,
+      signature,
+      message,
     }
   )
 
@@ -179,7 +183,7 @@ export async function authVerify(walletAddress: string, signature: string, messa
   return res
 }
 
-/** INTROSPECT */
+/** INTROSPECT — will include Authorization automatically via buildHeaders() */
 export async function authIntrospect(): Promise<IntrospectResponse> {
   const token = getToken()
 
@@ -195,7 +199,7 @@ export async function authIntrospect(): Promise<IntrospectResponse> {
   }
 }
 
-/** GET CURRENT USER */
+/** GET LOGGED-IN USER INFO & OPTIONAL ADMIN CHECK */
 export async function getMe(adminOnly = false) {
   const res = await authIntrospect()
   if (!res.ok) throw new Error(res.error || 'Unauthorized')
