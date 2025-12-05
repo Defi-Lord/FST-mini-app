@@ -39,13 +39,8 @@ export const API_BASE =
   'https://fst-backend-z7bc.onrender.com'
 
 /** ================= TOKEN HELPERS ================= */
-/**
- * Read token from any of the storage keys your app or other examples use.
- * This makes the client robust to mismatched key names.
- */
 export function getToken() {
   try {
-    // try several common keys (backwards/forwards compatibility)
     return (
       localStorage.getItem('auth_token') ||
       localStorage.getItem('authToken') ||
@@ -57,7 +52,6 @@ export function getToken() {
   }
 }
 
-/** set token — we write to auth_token (canonical) */
 export function setToken(token: string) {
   try {
     if (!token) localStorage.removeItem('auth_token')
@@ -70,13 +64,11 @@ function toHeaders(initHeaders?: RequestInit['headers']): Headers {
   const headers = new Headers()
   if (!initHeaders) return headers
 
-  // handle Headers | Record<string,string> | Array entries
   if (initHeaders instanceof Headers) {
     initHeaders.forEach((v, k) => headers.set(k, v))
   } else if (Array.isArray(initHeaders)) {
     for (const [k, v] of initHeaders) headers.set(k, v)
   } else {
-    // assume object
     for (const k of Object.keys(initHeaders as Record<string, string>)) {
       const v = (initHeaders as Record<string, string>)[k]
       if (typeof v !== 'undefined') headers.set(k, v as string)
@@ -88,7 +80,6 @@ function toHeaders(initHeaders?: RequestInit['headers']): Headers {
 function buildHeaders(init?: RequestInit): Headers {
   const headers = toHeaders(init?.headers)
 
-  // if there's already an Authorization header, keep it
   if (!headers.has('Authorization')) {
     const token = getToken()
     if (token) headers.set('Authorization', `Bearer ${token}`)
@@ -130,7 +121,6 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   } catch {}
 
   if (res.status === 401) {
-    // token invalid or expired — clear stored token and help caller handle redirect
     signOut()
     message = 'Unauthorized: Token invalid or expired'
   }
@@ -171,21 +161,25 @@ export type IntrospectResponse = {
   error?: string
 }
 
-/** LOGIN VERIFY */
-export async function authVerify(address: string, signature: string, message: string) {
-  const res = await api.post<{ ok: boolean; token: string; role: string }>(
+/** LOGIN VERIFY — FIXED TO MATCH BACKEND */
+export async function authVerify(walletAddress: string, signature: string, message: string) {
+  const res = await api.post<{ success: boolean; token: string; role: string }>(
     '/auth/verify',
-    { address, signature, message }
+    {
+      walletAddress,     // ✔ FIXED naming
+      signature,         // ✔ correct
+      message            // ✔ backend ignores but allowed
+    }
   )
 
-  if (res.ok && res.token) {
+  if (res.success && res.token) {
     setToken(res.token)
   }
 
   return res
 }
 
-/** INTROSPECT — will include Authorization automatically using buildHeaders() */
+/** INTROSPECT */
 export async function authIntrospect(): Promise<IntrospectResponse> {
   const token = getToken()
 
@@ -194,7 +188,6 @@ export async function authIntrospect(): Promise<IntrospectResponse> {
   }
 
   try {
-    // call without manually passing headers; buildHeaders will attach token
     return await api.post<IntrospectResponse>('/auth/introspect')
   } catch (err: any) {
     if (err.message?.includes('Unauthorized')) signOut()
@@ -202,7 +195,7 @@ export async function authIntrospect(): Promise<IntrospectResponse> {
   }
 }
 
-/** GET LOGGED-IN USER INFO & OPTIONAL ADMIN CHECK */
+/** GET CURRENT USER */
 export async function getMe(adminOnly = false) {
   const res = await authIntrospect()
   if (!res.ok) throw new Error(res.error || 'Unauthorized')
@@ -222,7 +215,6 @@ async function adminRequest<T>(path: string, init: RequestInit = {}) {
   const token = getToken()
   if (!token) throw new Error('Unauthorized: No admin token found')
 
-  // merge incoming headers but ensure Authorization present
   const headers = toHeaders(init.headers)
   if (!headers.has('Authorization')) headers.set('Authorization', `Bearer ${token}`)
   if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
