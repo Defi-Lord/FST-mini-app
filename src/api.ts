@@ -213,27 +213,32 @@ export async function getMe(adminOnly = false) {
 }
 
 /* =======================================================
-   ADMIN
+   ADMIN — Matches Your Backend Routes Exactly
 ======================================================= */
 async function adminRequest<T>(path: string, init: RequestInit = {}) {
   const token = getToken()
   if (!token) throw new Error('Unauthorized: No admin token found')
 
   const headers = toHeaders(init.headers)
-  if (!headers.has('Authorization')) headers.set('Authorization', `Bearer ${token}`)
-  if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
+  headers.set('Authorization', `Bearer ${token}`)
+  if (init.body && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json')
+  }
 
   return request<T>(path, { ...init, headers })
 }
 
-export function adminHealth() {
-  return adminRequest<{ ok: boolean; status?: string }>('/health')
+/** DASHBOARD SUMMARY */
+export function adminSummary() {
+  return adminRequest<{ ok: boolean; summary?: any }>('/admin/dashboard/summary')
 }
 
+/** LIST ALL CONTESTS */
 export function listContests() {
   return adminRequest<{ ok?: boolean; contests: Contest[] }>('/admin/contests')
 }
 
+/** CREATE OR UPDATE CONTEST */
 export function createContest(data: any) {
   const payload = {
     ...data,
@@ -250,6 +255,7 @@ export function createContest(data: any) {
   })
 }
 
+/** TOGGLE CONTEST OPEN STATUS */
 export function toggleContest(id: string, open: boolean) {
   return adminRequest<{ ok: boolean }>(`/admin/contests/${id}/toggle`, {
     method: 'PATCH',
@@ -257,21 +263,42 @@ export function toggleContest(id: string, open: boolean) {
   })
 }
 
+/** DELETE CONTEST */
 export function deleteContest(id: string) {
   return adminRequest<{ ok: boolean }>(`/admin/contests/${id}`, {
     method: 'DELETE',
   })
 }
 
+/** LIST USERS */
 export function listUsers() {
   return adminRequest<{ ok: boolean; users: AdminUser[] }>('/admin/users')
 }
 
+/** GET CONTEST LEADERBOARD */
 export async function getContestLeaderboard(id: string) {
   const res = await adminRequest<{ ok: boolean; leaderboard: LeaderboardEntry[] }>(
     `/admin/contests/${id}/leaderboard`
   )
   return { ok: res.ok, leaderboard: res.leaderboard ?? [] }
+}
+
+/** GET CONTEST PARTICIPANTS */
+export function getContestParticipants(id: string) {
+  return adminRequest(`/admin/contests/${id}/participants`)
+}
+
+/** UPDATE PRIZE POOL */
+export function updatePrizePool(id: string, prizePoolCents: number, payouts: any[]) {
+  return adminRequest(`/admin/contests/${id}/prize`, {
+    method: 'POST',
+    body: JSON.stringify({ prizePoolCents, payouts }),
+  })
+}
+
+/** ADMIN AUDIT LOG */
+export function adminActions(page = 1) {
+  return adminRequest(`/admin/actions?page=${page}`)
 }
 
 /* =======================================================
