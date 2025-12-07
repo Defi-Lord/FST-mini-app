@@ -48,6 +48,7 @@ export function getToken() {
       localStorage.getItem('auth_token') ||
       localStorage.getItem('authToken') ||
       localStorage.getItem('fst_jwt') ||
+      localStorage.getItem('fst_token') ||   // ✅ Added for compatibility
       ''
     )
   } catch {
@@ -58,8 +59,13 @@ export function getToken() {
 /** set token — canonical key auth_token */
 export function setToken(token: string) {
   try {
-    if (!token) localStorage.removeItem('auth_token')
-    else localStorage.setItem('auth_token', token)
+    if (!token) {
+      localStorage.removeItem('auth_token')
+      localStorage.removeItem('fst_token')  // Ensure cleanup
+    } else {
+      localStorage.setItem('auth_token', token)
+      localStorage.setItem('fst_token', token) // ✅ Write to both keys
+    }
   } catch {}
 }
 
@@ -125,7 +131,6 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   } catch {}
 
   if (res.status === 401) {
-    // clear token on 401 so client knows it's invalid/expired
     signOut()
     message = 'Unauthorized: Token invalid or expired'
   }
@@ -178,14 +183,13 @@ export async function authVerify(walletAddress: string, signature: string, messa
   )
 
   if (res && (res as any).token) {
-    // store token under canonical key
-    setToken((res as any).token)
+    setToken((res as any).token) // Stores correctly now
   }
 
   return res
 }
 
-/** INTROSPECT — will include Authorization automatically via buildHeaders() */
+/** INTROSPECT */
 export async function authIntrospect(): Promise<IntrospectResponse> {
   const token = getToken()
 
@@ -201,7 +205,7 @@ export async function authIntrospect(): Promise<IntrospectResponse> {
   }
 }
 
-/** GET LOGGED-IN USER INFO & OPTIONAL ADMIN CHECK */
+/** GET CURRENT USER */
 export async function getMe(adminOnly = false) {
   const res = await authIntrospect()
   if (!res.ok) throw new Error(res.error || 'Unauthorized')
@@ -215,7 +219,7 @@ export async function getMe(adminOnly = false) {
 }
 
 /* =======================================================
-   ADMIN — Matches Your Backend Routes Exactly
+   ADMIN
 ======================================================= */
 async function adminRequest<T>(path: string, init: RequestInit = {}) {
   const token = getToken()
@@ -230,17 +234,14 @@ async function adminRequest<T>(path: string, init: RequestInit = {}) {
   return request<T>(path, { ...init, headers })
 }
 
-/** DASHBOARD / HEALTH (admin-level) */
 export function adminHealth() {
   return adminRequest<{ ok: boolean; status?: string }>('/health')
 }
 
-/** LIST ALL CONTESTS */
 export function listContests() {
   return adminRequest<{ ok?: boolean; contests: Contest[] }>('/admin/contests')
 }
 
-/** CREATE OR UPDATE CONTEST */
 export function createContest(data: any) {
   const payload = {
     ...data,
@@ -257,7 +258,6 @@ export function createContest(data: any) {
   })
 }
 
-/** TOGGLE CONTEST OPEN STATUS */
 export function toggleContest(id: string, open: boolean) {
   return adminRequest<{ ok: boolean }>(`/admin/contests/${id}/toggle`, {
     method: 'PATCH',
@@ -265,19 +265,16 @@ export function toggleContest(id: string, open: boolean) {
   })
 }
 
-/** DELETE CONTEST */
 export function deleteContest(id: string) {
   return adminRequest<{ ok: boolean }>(`/admin/contests/${id}`, {
     method: 'DELETE',
   })
 }
 
-/** LIST USERS */
 export function listUsers() {
   return adminRequest<{ ok: boolean; users: AdminUser[] }>('/admin/users')
 }
 
-/** GET CONTEST LEADERBOARD */
 export async function getContestLeaderboard(id: string) {
   const res = await adminRequest<{ ok: boolean; leaderboard: LeaderboardEntry[] }>(
     `/admin/contests/${id}/leaderboard`
@@ -324,6 +321,7 @@ export function signOut() {
     localStorage.removeItem('auth_token')
     localStorage.removeItem('authToken')
     localStorage.removeItem('fst_jwt')
+    localStorage.removeItem('fst_token') // 👍 ensures logout consistency
     localStorage.removeItem('sol_wallet')
   } catch {}
 }
