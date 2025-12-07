@@ -9,7 +9,7 @@ import {
   getMe,
   signOut,
   getToken,
-} from './api';
+} from '../api';
 
 export default function AdminContests() {
   const [list, setList] = React.useState<APIContest[]>([]);
