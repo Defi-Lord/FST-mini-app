@@ -1,6 +1,6 @@
 // src/api.ts
 
-/** ================= Type Definitions ================= */
+/** ================= Type Definitions (UNCHANGED) ================= */
 export interface Contest {
   id: string
   name: string
@@ -39,10 +39,13 @@ export const API_BASE =
   'https://fst-backend-z7bc.onrender.com'
 
 /** ================= TOKEN HELPERS ================= */
+/**
+ * Read token from several keys for compatibility.
+ */
 export function getToken() {
   try {
     return (
-      localStorage.getItem('auth_token') ||     // main key
+      localStorage.getItem('auth_token') ||
       localStorage.getItem('authToken') ||
       localStorage.getItem('fst_jwt') ||
       ''
@@ -52,6 +55,7 @@ export function getToken() {
   }
 }
 
+/** set token — canonical key auth_token */
 export function setToken(token: string) {
   try {
     if (!token) localStorage.removeItem('auth_token')
@@ -59,19 +63,19 @@ export function setToken(token: string) {
   } catch {}
 }
 
-/** ================= Header Builders ================= */
-function toHeaders(raw?: RequestInit['headers']): Headers {
+/** ================= ALWAYS BUILD CORRECT HEADERS ================= */
+function toHeaders(initHeaders?: RequestInit['headers']): Headers {
   const headers = new Headers()
-  if (!raw) return headers
+  if (!initHeaders) return headers
 
-  if (raw instanceof Headers) {
-    raw.forEach((v, k) => headers.set(k, v))
-  } else if (Array.isArray(raw)) {
-    for (const [k, v] of raw) headers.set(k, v)
+  if (initHeaders instanceof Headers) {
+    initHeaders.forEach((v, k) => headers.set(k, v))
+  } else if (Array.isArray(initHeaders)) {
+    for (const [k, v] of initHeaders) headers.set(k, v)
   } else {
-    for (const k in raw as Record<string, string>) {
-      const v = (raw as Record<string, string>)[k]
-      if (v !== undefined) headers.set(k, v)
+    for (const k of Object.keys(initHeaders as Record<string, string>)) {
+      const v = (initHeaders as Record<string, string>)[k]
+      if (typeof v !== 'undefined') headers.set(k, v as string)
     }
   }
   return headers
@@ -93,7 +97,6 @@ function buildHeaders(init?: RequestInit): Headers {
 }
 
 /** ================= SAFE REQUEST WRAPPER ================= */
-
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = buildHeaders(init)
 
@@ -108,29 +111,29 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     return (await res.json()) as T
   }
 
-  // parse error
-  let msg = `HTTP ${res.status}`
+  let message = `HTTP ${res.status}`
   try {
-    const text = await res.text()
-    if (text) {
+    const txt = await res.text()
+    if (txt) {
       try {
-        const json = JSON.parse(text)
-        msg = json.error || text
+        const j = JSON.parse(txt)
+        message = j?.error || txt
       } catch {
-        msg = text
+        message = txt
       }
     }
   } catch {}
 
   if (res.status === 401) {
+    // clear token on 401 so client knows it's invalid/expired
     signOut()
-    msg = 'Unauthorized: Token invalid or expired'
+    message = 'Unauthorized: Token invalid or expired'
   }
 
-  throw new Error(msg)
+  throw new Error(message)
 }
 
-/** ================= SIMPLE API WRAPPERS ================= */
+/** ================= CONVENIENCE METHODS ================= */
 export const api = {
   get: <T>(p: string, init?: RequestInit) =>
     request<T>(p, { ...(init || {}), method: 'GET' }),
@@ -163,20 +166,32 @@ export type IntrospectResponse = {
   error?: string
 }
 
+/** LOGIN VERIFY — match backend param names */
 export async function authVerify(walletAddress: string, signature: string, message?: string) {
   const res = await api.post<{ success: boolean; token: string; role: string }>(
     '/auth/verify',
-    { walletAddress, signature, message }
+    {
+      walletAddress,
+      signature,
+      message,
+    }
   )
 
-  if (res.success && res.token) setToken(res.token)
+  if (res && (res as any).token) {
+    // store token under canonical key
+    setToken((res as any).token)
+  }
 
   return res
 }
 
+/** INTROSPECT — will include Authorization automatically via buildHeaders() */
 export async function authIntrospect(): Promise<IntrospectResponse> {
   const token = getToken()
-  if (!token) return { ok: false, error: 'No auth token found' }
+
+  if (!token) {
+    return { ok: false, error: 'No auth token found' }
+  }
 
   try {
     return await api.post<IntrospectResponse>('/auth/introspect')
@@ -186,6 +201,7 @@ export async function authIntrospect(): Promise<IntrospectResponse> {
   }
 }
 
+/** GET LOGGED-IN USER INFO & OPTIONAL ADMIN CHECK */
 export async function getMe(adminOnly = false) {
   const res = await authIntrospect()
   if (!res.ok) throw new Error(res.error || 'Unauthorized')
@@ -199,30 +215,32 @@ export async function getMe(adminOnly = false) {
 }
 
 /* =======================================================
-   ADMIN (exact backend routes)
+   ADMIN — Matches Your Backend Routes Exactly
 ======================================================= */
-
 async function adminRequest<T>(path: string, init: RequestInit = {}) {
   const token = getToken()
   if (!token) throw new Error('Unauthorized: No admin token found')
 
   const headers = toHeaders(init.headers)
   headers.set('Authorization', `Bearer ${token}`)
-  headers.set('Content-Type', 'application/json')
+  if (init.body && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json')
+  }
 
   return request<T>(path, { ...init, headers })
 }
 
-/** DASHBOARD */
-export function adminSummary() {
-  return adminRequest<{ ok: boolean; summary?: any }>('/admin/dashboard/summary')
+/** DASHBOARD / HEALTH (admin-level) */
+export function adminHealth() {
+  return adminRequest<{ ok: boolean; status?: string }>('/health')
 }
 
-/** CONTESTS */
+/** LIST ALL CONTESTS */
 export function listContests() {
   return adminRequest<{ ok?: boolean; contests: Contest[] }>('/admin/contests')
 }
 
+/** CREATE OR UPDATE CONTEST */
 export function createContest(data: any) {
   const payload = {
     ...data,
@@ -233,16 +251,13 @@ export function createContest(data: any) {
     startAt: data.startAt ?? null,
     endAt: data.endAt ?? null,
   }
-
-  return adminRequest<{ ok: boolean; contest: Contest }>(
-    '/admin/contests/create',
-    {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    }
-  )
+  return adminRequest<{ ok: boolean; contest: Contest }>('/admin/contests/create', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
 }
 
+/** TOGGLE CONTEST OPEN STATUS */
 export function toggleContest(id: string, open: boolean) {
   return adminRequest<{ ok: boolean }>(`/admin/contests/${id}/toggle`, {
     method: 'PATCH',
@@ -250,53 +265,35 @@ export function toggleContest(id: string, open: boolean) {
   })
 }
 
+/** DELETE CONTEST */
 export function deleteContest(id: string) {
   return adminRequest<{ ok: boolean }>(`/admin/contests/${id}`, {
     method: 'DELETE',
   })
 }
 
-export function getContestLeaderboard(id: string) {
-  return adminRequest<{ ok: boolean; leaderboard: LeaderboardEntry[] }>(
-    `/admin/contests/${id}/leaderboard`
-  )
-}
-
-export function getContestParticipants(id: string) {
-  return adminRequest(`/admin/contests/${id}/participants`)
-}
-
-/** PRIZE POOL */
-export function updatePrizePool(id: string, prizePoolCents: number, payouts: any[]) {
-  return adminRequest(`/admin/contests/${id}/prize`, {
-    method: 'POST',
-    body: JSON.stringify({ prizePoolCents, payouts }),
-  })
-}
-
-/** USERS */
+/** LIST USERS */
 export function listUsers() {
   return adminRequest<{ ok: boolean; users: AdminUser[] }>('/admin/users')
 }
 
-/** AUDIT LOG */
-export function adminActions(page = 1) {
-  return adminRequest(`/admin/actions?page=${page}`)
+/** GET CONTEST LEADERBOARD */
+export async function getContestLeaderboard(id: string) {
+  const res = await adminRequest<{ ok: boolean; leaderboard: LeaderboardEntry[] }>(
+    `/admin/contests/${id}/leaderboard`
+  )
+  return { ok: res.ok, leaderboard: res.leaderboard ?? [] }
 }
 
 /* =======================================================
    USER + FPL
 ======================================================= */
-
 export function getUserHistory() {
   return api.get<{ ok: boolean; history: any[] }>('/user/history')
 }
 
 export function joinContest(contestId: string, team?: any) {
-  return api.post<{ ok: boolean; created?: boolean }>(
-    `/contests/${contestId}/join`,
-    team
-  )
+  return api.post<{ ok: boolean; created?: boolean }>(`/contests/${contestId}/join`, team)
 }
 
 export function startPaidJoin(contestId: string) {

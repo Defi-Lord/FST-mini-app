@@ -9,7 +9,7 @@ import {
   getMe,
   signOut,
   getToken,
-} from '../api';
+} from './api';
 
 export default function AdminContests() {
   const [list, setList] = React.useState<APIContest[]>([]);
@@ -23,7 +23,7 @@ export default function AdminContests() {
   const load = React.useCallback(async () => {
     setErr(null);
     try {
-      const data = await listContests();
+      const data: any = await listContests();
       setList(data.contests || []);
     } catch (e: any) {
       if (e.message?.includes('Unauthorized')) signOut();

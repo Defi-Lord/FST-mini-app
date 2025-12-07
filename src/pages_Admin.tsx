@@ -1,13 +1,13 @@
 // src/pages_Admin.tsx
 import React from "react";
 import {
+  adminHealth,
   listContests,
   createContest,
   toggleContest,
   deleteContest,
   listUsers,
   getContestLeaderboard,
-  adminSummary,        // <-- NEW correct admin health endpoint
   type Contest,
   type AdminUser,
   type LeaderboardEntry,
@@ -46,93 +46,93 @@ export default function AdminPage({ onBack }: { onBack?: () => void }) {
   React.useEffect(() => {
     const init = async () => {
       try {
-        const token = getToken();
+        const token = getToken()
         if (!token) {
-          signOut();
-          return;
+          // no token -> sign out (clears any stray keys) and abort
+          signOut()
+          return
         }
-        await getMe(true); // verifies admin role
-        setReady(true);
+        // will throw if not ok or not admin
+        await getMe(true)
+        setReady(true)
       } catch (err: any) {
-        console.warn("Access denied or invalid token:", err?.message || err);
-        signOut();
+        console.warn("Access denied or invalid token:", err?.message || err)
+        signOut()
       }
-    };
-    init();
-  }, []);
+    }
+    init()
+  }, [])
 
   /** HEALTH */
   const loadHealth = React.useCallback(async () => {
-    setErr(null);
+    setErr(null)
     try {
-      await adminSummary();   // <-- FIX: replaces old adminHealth()
-      setHealth("ok");
+      await adminHealth()
+      setHealth("ok")
     } catch (e: any) {
-      setHealth("bad");
-      if (e.message?.includes("Unauthorized")) signOut();
-      setErr(String(e?.message || e));
-      console.error("Admin health check failed:", e);
+      setHealth("bad")
+      if (e.message?.includes("Unauthorized")) signOut()
+      setErr(String(e?.message || e))
+      console.error("Admin health check failed:", e)
     }
-  }, []);
+  }, [])
 
   /** LOAD CONTESTS */
   const loadContests = React.useCallback(async () => {
     try {
-      const res = await listContests();
-      const sorted = (res.contests || []).sort(
-        (a, b) =>
-          new Date(b.createdAt || 0).getTime() -
-          new Date(a.createdAt || 0).getTime()
-      );
-      setContests(sorted);
-      if (!selectedContest && res.contests.length)
-        setSelectedContest(res.contests[0].id);
+      const res = await listContests()
+      const items = (res as any).contests ?? []
+      const sorted = (items || []).sort(
+        (a: Contest, b: Contest) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+      )
+      setContests(sorted)
+      if (!selectedContest && items.length) setSelectedContest(items[0].id)
     } catch (e: any) {
-      if (e.message?.includes("Unauthorized")) signOut();
-      setErr(String(e?.message || e));
-      console.error("Failed to load contests:", e);
+      if (e.message?.includes("Unauthorized")) signOut()
+      setErr(String(e?.message || e))
+      console.error("Failed to load contests:", e)
     }
-  }, [selectedContest]);
+  }, [selectedContest])
 
   /** LOAD USERS */
   const loadUsers = React.useCallback(async () => {
     try {
-      const res = await listUsers();
-      setUsers(res.users || []);
+      const res = await listUsers()
+      setUsers((res as any).users || [])
     } catch (e: any) {
-      if (e.message?.includes("Unauthorized")) signOut();
-      setErr(String(e?.message || e));
-      console.error("Failed to load users:", e);
+      if (e.message?.includes("Unauthorized")) signOut()
+      setErr(String(e?.message || e))
+      console.error("Failed to load users:", e)
     }
-  }, []);
+  }, [])
 
   /** WHEN READY, LOAD DATA */
   React.useEffect(() => {
     if (ready) {
-      loadHealth();
-      loadContests();
-      loadUsers();
+      loadHealth()
+      loadContests()
+      loadUsers()
     }
-  }, [ready, loadHealth, loadContests, loadUsers]);
+  }, [ready, loadHealth, loadContests, loadUsers])
 
   const filteredUsers = React.useMemo(() => {
-    if (!userSearch.trim()) return users;
-    const q = userSearch.trim().toLowerCase();
+    if (!userSearch.trim()) return users
+    const q = userSearch.trim().toLowerCase()
     return users.filter(
       (u) =>
         u.id.toLowerCase().includes(q) ||
         (u.displayName || "").toLowerCase().includes(q)
-    );
-  }, [users, userSearch]);
+    )
+  }, [users, userSearch])
 
   const createOne = async () => {
-    if (!title) return;
+    if (!title) return
     if (realm !== "FREE" && (!startAt || !endAt)) {
-      alert("Please set both start and end dates for paid contests.");
-      return;
+      alert("Please set both start and end dates for paid contests.")
+      return
     }
-    setBusy(true);
-    setErr(null);
+    setBusy(true)
+    setErr(null)
     try {
       await createContest({
         title,
@@ -140,78 +140,78 @@ export default function AdminPage({ onBack }: { onBack?: () => void }) {
         entryFee: Number(fee),
         startAt: startAt ? new Date(startAt).toISOString() : undefined,
         endAt: endAt ? new Date(endAt).toISOString() : undefined,
-      });
-      setTitle("");
-      setFee(0);
-      setStartAt("");
-      setEndAt("");
-      await loadContests();
+      })
+      setTitle("")
+      setFee(0)
+      setStartAt("")
+      setEndAt("")
+      await loadContests()
     } catch (e: any) {
-      if (e.message?.includes("Unauthorized")) signOut();
-      setErr(String(e?.message || e));
-      console.error("Failed to create contest:", e);
+      if (e.message?.includes("Unauthorized")) signOut()
+      setErr(String(e?.message || e))
+      console.error("Failed to create contest:", e)
     } finally {
-      setBusy(false);
+      setBusy(false)
     }
-  };
+  }
 
   const toggleOne = async (id: string, active: boolean) => {
-    setErr(null);
+    setErr(null)
     try {
-      await toggleContest(id, active);
-      await loadContests();
+      await toggleContest(id, active)
+      await loadContests()
     } catch (e: any) {
-      if (e.message?.includes("Unauthorized")) signOut();
-      setErr(String(e?.message || e));
-      console.error("Failed to toggle contest:", e);
+      if (e.message?.includes("Unauthorized")) signOut()
+      setErr(String(e?.message || e))
+      console.error("Failed to toggle contest:", e)
     }
-  };
+  }
 
   const removeOne = async (id: string) => {
-    if (!confirm("Delete this contest?")) return;
-    setErr(null);
+    if (!confirm("Delete this contest?")) return
+    setErr(null)
     try {
-      await deleteContest(id);
-      await loadContests();
+      await deleteContest(id)
+      await loadContests()
     } catch (e: any) {
-      if (e.message?.includes("Unauthorized")) signOut();
-      setErr(String(e?.message || e));
-      console.error("Failed to delete contest:", e);
+      if (e.message?.includes("Unauthorized")) signOut()
+      setErr(String(e?.message || e))
+      console.error("Failed to delete contest:", e)
     }
-  };
+  }
 
   const loadLeaderboard = async () => {
-    if (!selectedContest) return;
-    setLbBusy(true);
-    setErr(null);
+    if (!selectedContest) return
+    setLbBusy(true)
+    setErr(null)
     try {
-      const res = await getContestLeaderboard(selectedContest);
-      setLeaderboard(res.leaderboard || []);
+      const res = await getContestLeaderboard(selectedContest)
+      setLeaderboard(res.leaderboard || [])
     } catch (e: any) {
-      if (e.message?.includes("Unauthorized")) signOut();
-      setErr(String(e?.message || e));
-      setLeaderboard([]);
-      console.error("Failed to load leaderboard:", e);
+      if (e.message?.includes("Unauthorized")) signOut()
+      setErr(String(e?.message || e))
+      setLeaderboard([])
+      console.error("Failed to load leaderboard:", e)
     } finally {
-      setLbBusy(false);
+      setLbBusy(false)
     }
-  };
+  }
 
   React.useEffect(() => {
-    if (tab === "leaderboard") loadLeaderboard();
-  }, [tab, selectedContest]);
+    if (tab === "leaderboard") loadLeaderboard()
+  }, [tab, selectedContest])
 
-  const now = Date.now();
+  const now = Date.now()
   const contestStatus = (c: Contest) => {
-    const start = c.startAt ? new Date(c.startAt).getTime() : 0;
-    const end = c.endAt ? new Date(c.endAt).getTime() : 0;
-    if (now < start) return "Scheduled";
-    if (now >= start && now <= end) return "Open";
-    if (now > end) return "Closed";
-    return "Inactive";
-  };
+    const start = c.startAt ? new Date(c.startAt).getTime() : 0
+    const end = c.endAt ? new Date(c.endAt).getTime() : 0
+    if (now < start) return "Scheduled"
+    if (now >= start && now <= end) return "Open"
+    if (now > end) return "Closed"
+    return "Inactive"
+  }
 
-  if (!ready) return <p>Loading admin panel…</p>;
+  if (!ready) return <p>Loading admin panel…</p>
 
   return (
     <div className="admin-wrap">
@@ -241,11 +241,11 @@ export default function AdminPage({ onBack }: { onBack?: () => void }) {
 
       {err && <div className="alert">{err}</div>}
 
-      {/* Your tabs + content below unchanged */}
+      {/* Your tabs + content would go here — keep existing UI unchanged */}
     </div>
-  );
+  )
 }
 
 const css = String.raw`
 // your CSS unchanged
-`;
+`
