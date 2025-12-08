@@ -20,8 +20,6 @@ export interface AdminUser {
   wallet: string
   role: string
   displayName?: string
-  createdAt?: string
-  updatedAt?: string
 }
 
 export interface LeaderboardEntry {
@@ -103,7 +101,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers,
-    credentials: 'include', // REQUIRED for cookies / CORS
+    credentials: 'include',
   })
 
   if (res.ok) {
@@ -113,76 +111,104 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   let message = `HTTP ${res.status}`
   try {
-    const txt = await res.text()
-    if (txt) {
+    const text = await res.text()
+    if (text) {
       try {
-        const j = JSON.parse(txt)
-        message = j?.error || txt
+        const json = JSON.parse(text)
+        message = json?.error || text
       } catch {
-        message = txt
+        message = text
       }
     }
   } catch {}
 
   if (res.status === 401) {
     signOut()
-    message = 'Unauthorized: Token invalid or expired'
+    message = 'Unauthorized'
   }
 
   throw new Error(message)
 }
 
-/** ================= API WRAPPERS ================= */
+/** ================= API WRAPPER ================= */
 export const api = {
-  get: <T>(p: string, init?: RequestInit) =>
-    request<T>(p, { ...(init || {}), method: 'GET' }),
-
-  post: <T>(p: string, body?: unknown, init?: RequestInit) =>
+  get: <T>(p: string) => request<T>(p, { method: 'GET' }),
+  post: <T>(p: string, body?: unknown) =>
     request<T>(p, {
-      ...(init || {}),
       method: 'POST',
       body: body ? JSON.stringify(body) : undefined,
     }),
-
-  patch: <T>(p: string, body?: unknown, init?: RequestInit) =>
+  patch: <T>(p: string, body?: unknown) =>
     request<T>(p, {
-      ...(init || {}),
       method: 'PATCH',
       body: body ? JSON.stringify(body) : undefined,
     }),
-
-  delete: <T>(p: string, init?: RequestInit) =>
-    request<T>(p, { ...(init || {}), method: 'DELETE' }),
+  delete: <T>(p: string) => request<T>(p, { method: 'DELETE' }),
 }
 
 /* =======================================================
-   AUTH (✅ MATCHES BACKEND EXACTLY)
+   AUTH (✅ RESTORED EXPORTS)
 ======================================================= */
 
-/** ✅ Request challenge */
-export async function authChallenge(address: string) {
-  if (!address) throw new Error('Wallet address required')
+export type IntrospectResponse = {
+  ok?: boolean
+  role?: string
+  wallet?: string
+  error?: string
+}
 
+/** Request challenge */
+export function authChallenge(address: string) {
   return api.post<{ ok: boolean; challenge: string }>('/auth/challenge', {
     address,
   })
 }
 
-/** ✅ Verify signed challenge */
+/** Verify signed challenge */
 export async function authVerify(address: string, signature: string) {
-  const res = await api.post<{ ok: boolean; token: string }>(
-    '/auth/verify',
-    {
-      address,
-      signature,
-    }
-  )
+  const res = await api.post<{ ok: boolean; token: string }>('/auth/verify', {
+    address,
+    signature,
+  })
 
-  if (res?.token) {
-    setToken(res.token)
+  if (res?.token) setToken(res.token)
+  return res
+}
+
+/** ✅ REQUIRED BY PAGES */
+export async function authIntrospect(): Promise<IntrospectResponse> {
+  try {
+    const token = getToken()
+    if (!token) return { ok: false }
+
+    const payload = JSON.parse(atob(token.split('.')[1]))
+    return {
+      ok: true,
+      wallet: payload.id,
+      role: payload.role,
+    }
+  } catch {
+    signOut()
+    return { ok: false }
+  }
+}
+
+/** ✅ REQUIRED BY ADMIN PAGES */
+export async function getMe(adminOnly = false) {
+  const res = await authIntrospect()
+  if (!res.ok) throw new Error('Unauthorized')
+
+  if (adminOnly && res.role !== 'ADMIN') {
+    signOut()
+    throw new Error('Admins only')
   }
 
-  return res
+  return {
+    user: {
+      id: res.wallet!,
+      role: res.role!,
+    },
+  }
 }
 
 /* =======================================================
@@ -190,68 +216,47 @@ export async function authVerify(address: string, signature: string) {
 ======================================================= */
 async function adminRequest<T>(path: string, init: RequestInit = {}) {
   const token = getToken()
-  if (!token) throw new Error('Unauthorized: No admin token found')
+  if (!token) throw new Error('Unauthorized')
 
   const headers = toHeaders(init.headers)
   headers.set('Authorization', `Bearer ${token}`)
-
-  if (init.body && !headers.has('Content-Type')) {
-    headers.set('Content-Type', 'application/json')
-  }
+  headers.set('Content-Type', 'application/json')
 
   return request<T>(path, { ...init, headers })
 }
 
-export function adminHealth() {
-  return adminRequest<{ ok: boolean }>('/health')
-}
-
 export function listContests() {
-  return adminRequest<{ ok?: boolean; contests: Contest[] }>('/admin/contests')
-}
-
-export function createContest(data: any) {
-  return adminRequest('/admin/contests/create', {
-    method: 'POST',
-    body: JSON.stringify({
-      ...data,
-      name: data.name ?? data.title ?? '',
-      title: data.title ?? data.name ?? '',
-      type: data.type ?? 'general',
-      realm: data.realm ?? 'WEEKLY',
-      startAt: data.startAt ?? null,
-      endAt: data.endAt ?? null,
-    }),
-  })
-}
-
-export function toggleContest(id: string, open: boolean) {
-  return adminRequest(`/admin/contests/${id}/toggle`, {
-    method: 'PATCH',
-    body: JSON.stringify({ open }),
-  })
-}
-
-export function deleteContest(id: string) {
-  return adminRequest(`/admin/contests/${id}`, { method: 'DELETE' })
-}
-
-export function listUsers() {
-  return adminRequest<{ ok: boolean; users: AdminUser[] }>('/admin/users')
-}
-
-export async function getContestLeaderboard(id: string) {
-  const res = await adminRequest<{ ok: boolean; leaderboard: LeaderboardEntry[] }>(
-    `/admin/contests/${id}/leaderboard`
-  )
-  return { ok: res.ok, leaderboard: res.leaderboard ?? [] }
+  return adminRequest<{ contests: Contest[] }>('/admin/contests')
 }
 
 /* =======================================================
-   USER
+   USER / CONTESTS (✅ RESTORED)
 ======================================================= */
-export function getUserHistory() {
-  return api.get<{ ok: boolean; history: any[] }>('/user/history')
+export function joinContest(contestId: string, team?: any) {
+  return api.post(`/contests/${contestId}/join`, team)
+}
+
+export function startPaidJoin(contestId: string) {
+  return api.post(`/contests/${contestId}/join/start`)
+}
+
+export function verifyPaidJoin(contestId: string, signature: string) {
+  return api.post(`/contests/${contestId}/join/verify`, { signature })
+}
+
+/* =======================================================
+   FPL (✅ RESTORED + CACHE-BUSTED)
+======================================================= */
+export function fetchBootstrap() {
+  return api.get<any>(`/fpl/api/bootstrap-static/?_=${Date.now()}`)
+}
+
+export function fetchFixtures() {
+  return api.get<any>(`/fpl/api/fixtures/?_=${Date.now()}`)
+}
+
+export function fetchElementSummary(id: string | number) {
+  return api.get<any>(`/fpl/api/element-summary/${id}/?_=${Date.now()}`)
 }
 
 /* =======================================================
