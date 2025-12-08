@@ -123,7 +123,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     if (text) {
       try {
         const json = JSON.parse(text)
-        message = json?.error || text
+        message = json?.error || json?.message || text
       } catch {
         message = text
       }
@@ -164,15 +164,15 @@ export type IntrospectResponse = {
   error?: string
 }
 
-/** ✅ Updated auth endpoints to match backend */
-export function authChallenge(walletAddress: string) {
-  return api.post<{ ok: boolean; challenge: string }>('/auth/challenge', {
+/** ✅ Updated auth endpoints to match auth.ts backend */
+export async function authNonce(walletAddress: string) {
+  return api.post<{ success: boolean; nonce: string; message: string }>('/auth/nonce', {
     walletAddress,
   })
 }
 
 export async function authVerify(walletAddress: string, signature: string) {
-  const res = await api.post<{ success: boolean; token: string }>('/auth/verify', {
+  const res = await api.post<{ success: boolean; token: string; wallet: string; role: string }>('/auth/verify', {
     walletAddress,
     signature,
   })
@@ -189,7 +189,7 @@ export async function authIntrospect(): Promise<IntrospectResponse> {
     const payload = JSON.parse(atob(token.split('.')[1]))
     return {
       ok: true,
-      wallet: payload.wallet, // matches backend payload
+      wallet: payload.wallet,
       role: payload.role,
     }
   } catch {
