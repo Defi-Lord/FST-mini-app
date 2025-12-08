@@ -31,7 +31,7 @@ export interface LeaderboardEntry {
   rank?: number
 }
 
-/** ✅ FIX: Paid join tx typing (HomeHub errors) */
+/** ✅ Paid join tx typing */
 export type PaidJoinTx = {
   to: string
   amountLamports: number
@@ -165,6 +165,11 @@ export type IntrospectResponse = {
   error?: string
 }
 
+/** ✅ REQUIRED: nonce endpoint (fixes 404) */
+export function authNonce(address: string) {
+  return api.post<{ nonce: string }>('/auth/nonce', { address })
+}
+
 export function authChallenge(address: string) {
   return api.post<{ ok: boolean; challenge: string }>('/auth/challenge', {
     address,
@@ -216,7 +221,7 @@ export async function getMe(adminOnly = false) {
 }
 
 /* =======================================================
-   ADMIN ✅ (ALL MISSING EXPORTS ADDED)
+   ADMIN
 ======================================================= */
 async function adminRequest<T>(path: string, init: RequestInit = {}) {
   const token = getToken()
