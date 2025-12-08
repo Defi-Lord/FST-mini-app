@@ -39,16 +39,13 @@ export const API_BASE =
   'https://fst-backend-z7bc.onrender.com'
 
 /** ================= TOKEN HELPERS ================= */
-/**
- * Read token from several keys for compatibility.
- */
 export function getToken() {
   try {
     return (
       localStorage.getItem('auth_token') ||
       localStorage.getItem('authToken') ||
       localStorage.getItem('fst_jwt') ||
-      localStorage.getItem('fst_token') ||   // ✅ Added for compatibility
+      localStorage.getItem('fst_token') ||
       ''
     )
   } catch {
@@ -56,20 +53,19 @@ export function getToken() {
   }
 }
 
-/** set token — canonical key auth_token */
 export function setToken(token: string) {
   try {
     if (!token) {
       localStorage.removeItem('auth_token')
-      localStorage.removeItem('fst_token')  // Ensure cleanup
+      localStorage.removeItem('fst_token')
     } else {
       localStorage.setItem('auth_token', token)
-      localStorage.setItem('fst_token', token) // ✅ Write to both keys
+      localStorage.setItem('fst_token', token)
     }
   } catch {}
 }
 
-/** ================= ALWAYS BUILD CORRECT HEADERS ================= */
+/** ================= HEADER HELPERS ================= */
 function toHeaders(initHeaders?: RequestInit['headers']): Headers {
   const headers = new Headers()
   if (!initHeaders) return headers
@@ -102,7 +98,7 @@ function buildHeaders(init?: RequestInit): Headers {
   return headers
 }
 
-/** ================= SAFE REQUEST WRAPPER ================= */
+/** ================= SAFE REQUEST ================= */
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = buildHeaders(init)
 
@@ -138,7 +134,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   throw new Error(message)
 }
 
-/** ================= CONVENIENCE METHODS ================= */
+/** ================= API WRAPPERS ================= */
 export const api = {
   get: <T>(p: string, init?: RequestInit) =>
     request<T>(p, { ...(init || {}), method: 'GET' }),
@@ -171,31 +167,26 @@ export type IntrospectResponse = {
   error?: string
 }
 
-/** LOGIN VERIFY — match backend param names */
-export async function authVerify(walletAddress: string, signature: string, message?: string) {
+export async function authVerify(
+  walletAddress: string,
+  signature: string,
+  message?: string
+) {
   const res = await api.post<{ success: boolean; token: string; role: string }>(
     '/auth/verify',
-    {
-      walletAddress,
-      signature,
-      message,
-    }
+    { walletAddress, signature, message }
   )
 
-  if (res && (res as any).token) {
-    setToken((res as any).token) // Stores correctly now
+  if ((res as any)?.token) {
+    setToken((res as any).token)
   }
 
   return res
 }
 
-/** INTROSPECT */
 export async function authIntrospect(): Promise<IntrospectResponse> {
   const token = getToken()
-
-  if (!token) {
-    return { ok: false, error: 'No auth token found' }
-  }
+  if (!token) return { ok: false, error: 'No auth token found' }
 
   try {
     return await api.post<IntrospectResponse>('/auth/introspect')
@@ -205,7 +196,6 @@ export async function authIntrospect(): Promise<IntrospectResponse> {
   }
 }
 
-/** GET CURRENT USER */
 export async function getMe(adminOnly = false) {
   const res = await authIntrospect()
   if (!res.ok) throw new Error(res.error || 'Unauthorized')
@@ -235,7 +225,7 @@ async function adminRequest<T>(path: string, init: RequestInit = {}) {
 }
 
 export function adminHealth() {
-  return adminRequest<{ ok: boolean; status?: string }>('/health')
+  return adminRequest<{ ok: boolean }>('/health')
 }
 
 export function listContests() {
@@ -243,32 +233,29 @@ export function listContests() {
 }
 
 export function createContest(data: any) {
-  const payload = {
-    ...data,
-    name: data.name ?? data.title ?? '',
-    title: data.title ?? data.name ?? '',
-    type: data.type ?? 'general',
-    realm: data.realm ?? 'WEEKLY',
-    startAt: data.startAt ?? null,
-    endAt: data.endAt ?? null,
-  }
-  return adminRequest<{ ok: boolean; contest: Contest }>('/admin/contests/create', {
+  return adminRequest('/admin/contests/create', {
     method: 'POST',
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      ...data,
+      name: data.name ?? data.title ?? '',
+      title: data.title ?? data.name ?? '',
+      type: data.type ?? 'general',
+      realm: data.realm ?? 'WEEKLY',
+      startAt: data.startAt ?? null,
+      endAt: data.endAt ?? null,
+    }),
   })
 }
 
 export function toggleContest(id: string, open: boolean) {
-  return adminRequest<{ ok: boolean }>(`/admin/contests/${id}/toggle`, {
+  return adminRequest(`/admin/contests/${id}/toggle`, {
     method: 'PATCH',
     body: JSON.stringify({ open }),
   })
 }
 
 export function deleteContest(id: string) {
-  return adminRequest<{ ok: boolean }>(`/admin/contests/${id}`, {
-    method: 'DELETE',
-  })
+  return adminRequest(`/admin/contests/${id}`, { method: 'DELETE' })
 }
 
 export function listUsers() {
@@ -283,34 +270,35 @@ export async function getContestLeaderboard(id: string) {
 }
 
 /* =======================================================
-   USER + FPL
+   USER + FPL (CACHE-BUSTED ✅)
 ======================================================= */
 export function getUserHistory() {
   return api.get<{ ok: boolean; history: any[] }>('/user/history')
 }
 
 export function joinContest(contestId: string, team?: any) {
-  return api.post<{ ok: boolean; created?: boolean }>(`/contests/${contestId}/join`, team)
+  return api.post(`/contests/${contestId}/join`, team)
 }
 
 export function startPaidJoin(contestId: string) {
-  return api.post<any>(`/contests/${contestId}/join/start`)
+  return api.post(`/contests/${contestId}/join/start`)
 }
 
 export function verifyPaidJoin(contestId: string, signature: string) {
-  return api.post<any>(`/contests/${contestId}/join/verify`, { signature })
+  return api.post(`/contests/${contestId}/join/verify`, { signature })
 }
 
+/** ✅ CACHE-BUSTED FPL ENDPOINTS */
 export function fetchBootstrap() {
-  return api.get<any>('/fpl/api/bootstrap-static/')
+  return api.get<any>(`/fpl/api/bootstrap-static/?_=${Date.now()}`)
 }
 
 export function fetchFixtures() {
-  return api.get<any>('/fpl/api/fixtures/')
+  return api.get<any>(`/fpl/api/fixtures/?_=${Date.now()}`)
 }
 
 export function fetchElementSummary(id: string | number) {
-  return api.get<any>(`/fpl/api/element-summary/${id}/`)
+  return api.get<any>(`/fpl/api/element-summary/${id}/?_=${Date.now()}`)
 }
 
 /* =======================================================
@@ -321,7 +309,7 @@ export function signOut() {
     localStorage.removeItem('auth_token')
     localStorage.removeItem('authToken')
     localStorage.removeItem('fst_jwt')
-    localStorage.removeItem('fst_token') // 👍 ensures logout consistency
+    localStorage.removeItem('fst_token')
     localStorage.removeItem('sol_wallet')
   } catch {}
 }
