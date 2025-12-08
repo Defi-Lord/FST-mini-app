@@ -1,6 +1,6 @@
 // src/api.ts
 
-/** ================= Type Definitions (UNCHANGED) ================= */
+/** ================= Type Definitions ================= */
 export interface Contest {
   id: string
   name: string
@@ -43,8 +43,6 @@ export function getToken() {
   try {
     return (
       localStorage.getItem('auth_token') ||
-      localStorage.getItem('authToken') ||
-      localStorage.getItem('fst_jwt') ||
       localStorage.getItem('fst_token') ||
       ''
     )
@@ -77,7 +75,7 @@ function toHeaders(initHeaders?: RequestInit['headers']): Headers {
   } else {
     for (const k of Object.keys(initHeaders as Record<string, string>)) {
       const v = (initHeaders as Record<string, string>)[k]
-      if (typeof v !== 'undefined') headers.set(k, v as string)
+      if (v !== undefined) headers.set(k, String(v))
     }
   }
   return headers
@@ -105,7 +103,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers,
-    credentials: 'include',
+    credentials: 'include', // REQUIRED for cookies / CORS
   })
 
   if (res.ok) {
@@ -158,54 +156,33 @@ export const api = {
 }
 
 /* =======================================================
-   AUTH
+   AUTH (✅ MATCHES BACKEND EXACTLY)
 ======================================================= */
-export type IntrospectResponse = {
-  ok?: boolean
-  role?: string
-  wallet?: string
-  error?: string
+
+/** ✅ Request challenge */
+export async function authChallenge(address: string) {
+  if (!address) throw new Error('Wallet address required')
+
+  return api.post<{ ok: boolean; challenge: string }>('/auth/challenge', {
+    address,
+  })
 }
 
-export async function authVerify(
-  walletAddress: string,
-  signature: string,
-  message?: string
-) {
-  const res = await api.post<{ success: boolean; token: string; role: string }>(
+/** ✅ Verify signed challenge */
+export async function authVerify(address: string, signature: string) {
+  const res = await api.post<{ ok: boolean; token: string }>(
     '/auth/verify',
-    { walletAddress, signature, message }
+    {
+      address,
+      signature,
+    }
   )
 
-  if ((res as any)?.token) {
-    setToken((res as any).token)
+  if (res?.token) {
+    setToken(res.token)
   }
 
   return res
-}
-
-export async function authIntrospect(): Promise<IntrospectResponse> {
-  const token = getToken()
-  if (!token) return { ok: false, error: 'No auth token found' }
-
-  try {
-    return await api.post<IntrospectResponse>('/auth/introspect')
-  } catch (err: any) {
-    if (err.message?.includes('Unauthorized')) signOut()
-    return { ok: false, error: err.message }
-  }
-}
-
-export async function getMe(adminOnly = false) {
-  const res = await authIntrospect()
-  if (!res.ok) throw new Error(res.error || 'Unauthorized')
-
-  if (adminOnly && res.role !== 'ADMIN') {
-    signOut()
-    throw new Error('Access denied: Admins only')
-  }
-
-  return { user: { id: res.wallet!, role: res.role! } }
 }
 
 /* =======================================================
@@ -217,6 +194,7 @@ async function adminRequest<T>(path: string, init: RequestInit = {}) {
 
   const headers = toHeaders(init.headers)
   headers.set('Authorization', `Bearer ${token}`)
+
   if (init.body && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json')
   }
@@ -270,35 +248,10 @@ export async function getContestLeaderboard(id: string) {
 }
 
 /* =======================================================
-   USER + FPL (CACHE-BUSTED ✅)
+   USER
 ======================================================= */
 export function getUserHistory() {
   return api.get<{ ok: boolean; history: any[] }>('/user/history')
-}
-
-export function joinContest(contestId: string, team?: any) {
-  return api.post(`/contests/${contestId}/join`, team)
-}
-
-export function startPaidJoin(contestId: string) {
-  return api.post(`/contests/${contestId}/join/start`)
-}
-
-export function verifyPaidJoin(contestId: string, signature: string) {
-  return api.post(`/contests/${contestId}/join/verify`, { signature })
-}
-
-/** ✅ CACHE-BUSTED FPL ENDPOINTS */
-export function fetchBootstrap() {
-  return api.get<any>(`/fpl/api/bootstrap-static/?_=${Date.now()}`)
-}
-
-export function fetchFixtures() {
-  return api.get<any>(`/fpl/api/fixtures/?_=${Date.now()}`)
-}
-
-export function fetchElementSummary(id: string | number) {
-  return api.get<any>(`/fpl/api/element-summary/${id}/?_=${Date.now()}`)
 }
 
 /* =======================================================
@@ -307,8 +260,6 @@ export function fetchElementSummary(id: string | number) {
 export function signOut() {
   try {
     localStorage.removeItem('auth_token')
-    localStorage.removeItem('authToken')
-    localStorage.removeItem('fst_jwt')
     localStorage.removeItem('fst_token')
     localStorage.removeItem('sol_wallet')
   } catch {}
