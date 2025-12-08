@@ -164,7 +164,7 @@ export type IntrospectResponse = {
   error?: string
 }
 
-/** ✅ Updated to match backend */
+/** ✅ Updated auth endpoints to match backend */
 export function authChallenge(walletAddress: string) {
   return api.post<{ ok: boolean; challenge: string }>('/auth/challenge', {
     walletAddress,
@@ -189,7 +189,7 @@ export async function authIntrospect(): Promise<IntrospectResponse> {
     const payload = JSON.parse(atob(token.split('.')[1]))
     return {
       ok: true,
-      wallet: payload.wallet, // updated to match backend payload
+      wallet: payload.wallet, // matches backend payload
       role: payload.role,
     }
   } catch {
