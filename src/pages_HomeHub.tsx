@@ -294,7 +294,12 @@ export default function HomeHub({
         const { created } = await doPaidJoinFlow(activeContest)
         alert(created ? 'Joined paid contest!' : 'Already joined this contest.')
       } else {
-        const { created } = await joinContest(activeContest.id, { picks: team.map(p => ({ elementId: Number(p.id) })) })
+        const resp = await joinContest(activeContest.id, { 
+          picks: team.map(p => ({ elementId: Number(p.id) })) 
+        });
+        
+        const created = (resp as any)?.created;
+        
         alert(created ? 'Joined free contest!' : 'You already joined this contest.')
       }
     } catch (e: any) {
