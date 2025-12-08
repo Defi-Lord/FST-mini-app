@@ -31,6 +31,14 @@ export interface LeaderboardEntry {
   rank?: number
 }
 
+/** ✅ FIX: Paid join tx typing (HomeHub errors) */
+export type PaidJoinTx = {
+  to: string
+  amountLamports: number
+  memo?: string
+  created?: boolean
+}
+
 /** ================= Base Config ================= */
 export const API_BASE =
   (import.meta as any).env?.VITE_API_BASE ||
@@ -147,7 +155,7 @@ export const api = {
 }
 
 /* =======================================================
-   AUTH (✅ RESTORED EXPORTS)
+   AUTH
 ======================================================= */
 
 export type IntrospectResponse = {
@@ -157,14 +165,12 @@ export type IntrospectResponse = {
   error?: string
 }
 
-/** Request challenge */
 export function authChallenge(address: string) {
   return api.post<{ ok: boolean; challenge: string }>('/auth/challenge', {
     address,
   })
 }
 
-/** Verify signed challenge */
 export async function authVerify(address: string, signature: string) {
   const res = await api.post<{ ok: boolean; token: string }>('/auth/verify', {
     address,
@@ -175,7 +181,6 @@ export async function authVerify(address: string, signature: string) {
   return res
 }
 
-/** ✅ REQUIRED BY PAGES */
 export async function authIntrospect(): Promise<IntrospectResponse> {
   try {
     const token = getToken()
@@ -193,7 +198,6 @@ export async function authIntrospect(): Promise<IntrospectResponse> {
   }
 }
 
-/** ✅ REQUIRED BY ADMIN PAGES */
 export async function getMe(adminOnly = false) {
   const res = await authIntrospect()
   if (!res.ok) throw new Error('Unauthorized')
@@ -212,7 +216,7 @@ export async function getMe(adminOnly = false) {
 }
 
 /* =======================================================
-   ADMIN
+   ADMIN ✅ (ALL MISSING EXPORTS ADDED)
 ======================================================= */
 async function adminRequest<T>(path: string, init: RequestInit = {}) {
   const token = getToken()
@@ -225,27 +229,64 @@ async function adminRequest<T>(path: string, init: RequestInit = {}) {
   return request<T>(path, { ...init, headers })
 }
 
+export function adminHealth() {
+  return adminRequest<{ ok: boolean }>('/admin/health')
+}
+
 export function listContests() {
   return adminRequest<{ contests: Contest[] }>('/admin/contests')
 }
 
+export function createContest(payload: Partial<Contest>) {
+  return adminRequest('/admin/contests', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function toggleContest(contestId: string, active: boolean) {
+  return adminRequest(`/admin/contests/${contestId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ active }),
+  })
+}
+
+export function deleteContest(contestId: string) {
+  return adminRequest(`/admin/contests/${contestId}`, {
+    method: 'DELETE',
+  })
+}
+
+export function listUsers() {
+  return adminRequest<{ users: AdminUser[] }>('/admin/users')
+}
+
+export function getContestLeaderboard(contestId: string) {
+  return adminRequest<{ leaderboard: LeaderboardEntry[] }>(
+    `/admin/contests/${contestId}/leaderboard`
+  )
+}
+
 /* =======================================================
-   USER / CONTESTS (✅ RESTORED)
+   USER / CONTESTS
 ======================================================= */
 export function joinContest(contestId: string, team?: any) {
   return api.post(`/contests/${contestId}/join`, team)
 }
 
 export function startPaidJoin(contestId: string) {
-  return api.post(`/contests/${contestId}/join/start`)
+  return api.post<PaidJoinTx>(`/contests/${contestId}/join/start`)
 }
 
 export function verifyPaidJoin(contestId: string, signature: string) {
-  return api.post(`/contests/${contestId}/join/verify`, { signature })
+  return api.post<{ created: boolean }>(
+    `/contests/${contestId}/join/verify`,
+    { signature }
+  )
 }
 
 /* =======================================================
-   FPL (✅ RESTORED + CACHE-BUSTED)
+   FPL
 ======================================================= */
 export function fetchBootstrap() {
   return api.get<any>(`/fpl/api/bootstrap-static/?_=${Date.now()}`)
