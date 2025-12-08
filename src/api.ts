@@ -157,7 +157,6 @@ export const api = {
 /* =======================================================
    AUTH
 ======================================================= */
-
 export type IntrospectResponse = {
   ok?: boolean
   role?: string
@@ -165,20 +164,16 @@ export type IntrospectResponse = {
   error?: string
 }
 
-/** ✅ REQUIRED: nonce endpoint (fixes 404) */
-export function authNonce(address: string) {
-  return api.post<{ nonce: string }>('/auth/nonce', { address })
-}
-
-export function authChallenge(address: string) {
+/** ✅ Updated to match backend */
+export function authChallenge(walletAddress: string) {
   return api.post<{ ok: boolean; challenge: string }>('/auth/challenge', {
-    address,
+    walletAddress,
   })
 }
 
-export async function authVerify(address: string, signature: string) {
-  const res = await api.post<{ ok: boolean; token: string }>('/auth/verify', {
-    address,
+export async function authVerify(walletAddress: string, signature: string) {
+  const res = await api.post<{ success: boolean; token: string }>('/auth/verify', {
+    walletAddress,
     signature,
   })
 
@@ -194,7 +189,7 @@ export async function authIntrospect(): Promise<IntrospectResponse> {
     const payload = JSON.parse(atob(token.split('.')[1]))
     return {
       ok: true,
-      wallet: payload.id,
+      wallet: payload.wallet, // updated to match backend payload
       role: payload.role,
     }
   } catch {
