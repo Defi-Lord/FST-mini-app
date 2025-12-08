@@ -70,17 +70,14 @@ type FixtureView = { id: string; home: string; away: string; kickoff_utc: string
 async function loadGameweekFixtures(): Promise<FixtureView[]> {
   const [fixtures, bootstrap] = await Promise.all([ fetchFixtures(), fetchBootstrap() ])
 
-  // Build team names map
   const teamNameById = new Map<number, string>()
   if (bootstrap?.teams) for (const t of bootstrap.teams) teamNameById.set(t.id, t.name)
 
-  // Pick the next/current event by FPL "events" (gameweeks)
   const events = Array.isArray(bootstrap?.events) ? bootstrap.events : []
   const now = Date.now()
   const upcoming = events.find((e: any) => !e.finished && !e.data_checked) || events.find((e: any) => !e.finished) || events[0]
   const targetEventId = upcoming?.id
 
-  // If we have an event id, filter fixtures by event; else fallback to next 8 calendar fixtures
   let fx: any[] = []
   if (targetEventId) {
     fx = (fixtures || []).filter((f: any) => Number(f.event) === Number(targetEventId))
@@ -91,7 +88,6 @@ async function loadGameweekFixtures(): Promise<FixtureView[]> {
       .slice(0, 8)
   }
 
-  // Final map
   return fx.map((f: any, idx: number) => ({
     id: `gwfx-${idx}-${f.id ?? Math.random()}`,
     home: teamNameById.get(f.team_h) || `Team ${f.team_h}`,
@@ -127,7 +123,7 @@ async function sumWeeklyPointsForTeam(playerIds: (string|number)[], round: numbe
   return totals.reduce((a, b) => a + b, 0)
 }
 
-/* ===== Paid join helper (manual signature paste) ===== */
+/* ===== Paid join helper ===== */
 async function doPaidJoinFlow(contest: Contest) {
   const { to, amountLamports, memo } = await startPaidJoin(contest.id)
   const sol = (amountLamports / 1_000_000_000).toFixed(6)
@@ -155,7 +151,6 @@ export default function HomeHub({
 
   const [lb, setLb] = useState<LbEntry[] | null | 'error'>(null)
 
-  // === Fixture Carousel state ===
   const [fixtures, setFixtures] = useState<FixtureView[] | 'error' | null>(null)
   const [fxIdx, setFxIdx] = useState(0)
   const fxTimerRef = useRef<number | null>(null)
@@ -163,7 +158,6 @@ export default function HomeHub({
 
   const [menuOpen, setMenuOpen] = useState(false)
 
-  // contests snapshot
   const [contests, setContests] = useState<Contest[]>([])
   const [activeContest, setActiveContest] = useState<Contest | null>(null)
 
@@ -176,13 +170,12 @@ export default function HomeHub({
       ])
       if (!mounted) return
       setLb(a === 'error' ? 'error' : a)
-      setFixtures(f === 'error' ? 'error' : (f.length ? f : 'error')) // ensure not null
+      setFixtures(f === 'error' ? 'error' : (f.length ? f : 'error'))
       setFxIdx(0)
     })()
     return () => { mounted = false }
   }, [])
 
-  // auto-advance fixtures every 4 seconds
   useEffect(() => {
     if (!Array.isArray(fixtures) || fixtures.length <= 1) return
     const tick = () => setFxIdx(i => (i + 1) % fixtures.length)
@@ -190,7 +183,6 @@ export default function HomeHub({
     return () => { if (fxTimerRef.current) window.clearInterval(fxTimerRef.current) }
   }, [fixtures])
 
-  // touch swipe
   useEffect(() => {
     const el = fxWrapRef.current
     if (!el || !Array.isArray(fixtures) || fixtures.length <= 1) return
@@ -223,7 +215,6 @@ export default function HomeHub({
     }
   }, [fixtures])
 
-  // load contests (admin list)
   useEffect(() => {
     let mounted = true
     ;(async () => {
@@ -294,7 +285,6 @@ export default function HomeHub({
     return () => { mounted = false }
   }, [round, team])
 
-  // ===== Unified Join handler (FREE or PAID) =====
   async function handleJoinUnified() {
     try {
       if (onJoinContest) return onJoinContest()
@@ -312,7 +302,6 @@ export default function HomeHub({
     }
   }
 
-  // manual prev/next (helps verify carousel renders)
   const prevFx = () => { if (Array.isArray(fixtures) && fixtures.length>1) setFxIdx(i => (i - 1 + fixtures.length) % fixtures.length) }
   const nextFx = () => { if (Array.isArray(fixtures) && fixtures.length>1) setFxIdx(i => (i + 1) % fixtures.length) }
 
@@ -532,12 +521,13 @@ const styles = String.raw`
 .qa-title { font-weight:900; }
 .btn-ghost { appearance:none; background:transparent; color:#fff; padding:8px 10px; border-radius:10px; font-weight:800; border:1px solid rgba(255,255,255,.15); cursor:pointer; }
 .btn-add { appearance:none; border:none; background:#111827; color:#fff; padding:8px 10px; border-radius:10px; font-weight:800; cursor:pointer; }
-.cta { appearance:none; border:none; background:#111827; color:#fff; padding:10px 12px; border-radius:12px; font-weight:900; cursor:pointer; }
-.hero { border-radius: 16px; padding: 14px; }
-.tabbar { position: fixed; left:0; right:0; bottom:0; height: 64px; background: rgba(0,0,0,.6); border-top: 1px solid rgba(255,255,255,.12); display:flex; }
-.tab { flex:1; background:transparent; border:none; color:#fff; font-weight:800; }
-.tab span { opacity:.9 }
-.hamburger-btn { background:transparent; border:none; cursor:pointer; }
-.hamburger-lines { display:grid; gap:3px; }
-.hamburger-lines div { width:18px; height:2px; background:#fff; }
-`;
+.hero { padding:16px; border-radius:16px; }
+.hero-tags { display:flex; gap:8px; flex-wrap:wrap; }
+.hero-tags span { padding:4px 8px; border-radius:8px; background:rgba(255,255,255,0.1); font-size:12px; }
+.tabbar { position:fixed; bottom:0; left:0; right:0; display:flex; background:#0f0f0f; border-top:1px solid rgba(255,255,255,0.1); }
+.tab { flex:1; padding:12px 0; text-align:center; color:#fff; background:none; border:none; font-weight:700; }
+.tab.active { color:#6366f1; }
+.hamburger-btn { background:none; border:none; cursor:pointer; padding:4px; }
+.hamburger-lines { display:flex; flex-direction:column; gap:4px; }
+.hamburger-lines div { background:#fff; height:2px; width:20px; }
+`
